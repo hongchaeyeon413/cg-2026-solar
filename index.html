@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>내 첫 WebGL</title>
+  <style>
+    body { margin: 0; background: #111; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+  <canvas id="glcanvas"></canvas>
+  <script>
+    const canvas = document.getElementById('glcanvas');
+    const gl = canvas.getContext('webgl2');
+
+    if (!gl) {
+      document.body.innerHTML = '<h1 style="color:white">WebGL2를 사용할 수 없습니다</h1>';
+    } else {
+      function resizeCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const width = Math.floor(canvas.clientWidth * dpr);
+        const height = Math.floor(canvas.clientHeight * dpr);
+
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+          gl.viewport(0, 0, width, height);
+        }
+      }
+
+      function initializeWebGL() {
+        resizeCanvas();
+        gl.clearColor(0.09, 0.35, 0.55, 1.0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        console.log('WebGL2 준비 완료:', gl.getParameter(gl.VERSION));
+      }
+
+      window.addEventListener('resize', resizeCanvas);
+      initializeWebGL();
+    }
+  </script>
+</body>
+</html>
