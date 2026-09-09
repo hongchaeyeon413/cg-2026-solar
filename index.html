@@ -13,6 +13,7 @@
   <script>
     const canvas = document.getElementById('glcanvas');
     const gl = canvas.getContext('webgl2');
+    console.log('WebGL2 준비 완료:', gl.getParameter(gl.VERSION));
 
     if (!gl) {
       alert('이 브라우저에서는 WebGL2를 사용할 수 없습니다.');
