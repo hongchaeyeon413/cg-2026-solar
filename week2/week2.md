@@ -183,7 +183,7 @@ T를 Rz보다 앞(왼쪽)으로 옮기면 `T · Rz · S`가 되어, 실제 적�
 
 - Task 1 공유 링크: https://cg.catholic.ac.kr/~mgchoi/CG/demos/d02-transform-lab.html?d=eyJyYW5nZSI6eyJ4IjoiNzAiLCJ5IjoiNzAiLCJ6IjoiNzAifSwib2JqZWN0cyI6W3siaWQiOiJlYXJ0aCIsIm5hbWUiOiLsp4DqtawiLCJjb2xvciI6WzAuMzUsMC42LDAuOTVdLCJzdGVwcyI6W3sidHlwZSI6IlJ5IiwiYXJncyI6WyIyMy41Il19LHsidHlwZSI6IlJ4IiwiYXJncyI6WyJ0KjMwIl19LHsidHlwZSI6IlMiLCJhcmdzIjpbIjEiLCIxIiwiMSJdfSx7InR5cGUiOiJUIiwiYXJncyI6WyIwIiwiMCIsIjAiXX1dfSx7ImlkIjoibW9vbiIsIm5hbWUiOiLri6wiLCJjb2xvciI6WzAuNzgsMC43OCwwLjgyXSwic3RlcHMiOlt7InR5cGUiOiJSeSIsImFyZ3MiOlsiNS4xIl19LHsidHlwZSI6IlJ6IiwiYXJncyI6WyJ0KjEwIl19LHsidHlwZSI6IlQiLCJhcmdzIjpbIi02MC4zNCIsIjAiLCIwIl19LHsidHlwZSI6IlN1IiwiYXJncyI6WyIwLjI3Il19XX0seyJpZCI6InNhdCIsIm5hbWUiOiLsnbjqs7XsnITshLEiLCJjb2xvciI6WzAuOTUsMC43MiwwLjM1XSwic3RlcHMiOlt7InR5cGUiOiJSeSIsImFyZ3MiOlsiOTguMTMiXX0seyJ0eXBlIjoiUnoiLCJhcmdzIjpbInQqMTAwIl19LHsidHlwZSI6IlQiLCJhcmdzIjpbIi0xLjExIiwiMCIsIjAiXX0seyJ0eXBlIjoiU3UiLCJhcmdzIjpbIjAuMDAwMDAwNTUiXX0seyJ0eXBlIjoiUngiLCJhcmdzIjpbInQqMTAwIl19XX1dfQ%3D%3D
 
-- [Task 1 실행하기](https://<username>.github.io/cg-2026-solar/week2/task1.html)
+- [Task 1 실행하기](https://hongchaeyeon413.github.io/cg-2026-solar/week2/task1.html)
 
 
 
@@ -297,7 +297,7 @@ Task 1의 값(Ry 23.5, Rx t*30, S 1, T 0,0,0)을 그대로 유지하고, 맨 앞
 - 나머지 Ry(98.13), Rz(t*100), T(-1.11,0,0), Su(0.00000055), Rx(t*100)는 Task 1의 값과 이유를 그대로 유지했습니다.
 - 다만 이 배율을 적용해도 위성의 실제 크기 비율(0.00000055)이 워낙 극단적으로 작기 때문에, 화면상에서는 위성이 사실상 보이지 않는 점을 확인했습니다. 이는 실제 비율을 그대로 지키는 한 배율을 아무리 조정해도 해결되지 않는 근본적인 한계이며, 이 관찰이 Task 3에서 "실제 비율이 정보 전달에 부적합하다"고 판단한 근거가 되었습니다.
 
-### 1. s를 얼마로 정했고 그 값을 어떻게 계산했는가?
+### s를 얼마로 정했고 그 값을 어떻게 계산했는가?
 
 s = 0.015로 정했습니다.
 
@@ -312,7 +312,7 @@ s = 1 / 60.61 ≈ 0.0165
 이 값(0.0165)을 그대로 쓰면 달의 가장자리가 NDC 경계(-1~1)에 딱 걸쳐서 잘릴 위험이 있어서, 여유를 두어 s = 0.015로 낮춰 정했습니다.
 
 
-### 2. 배율 행렬을 사슬의 맨 앞에 넣은 이유는 무엇인가? 맨 뒤에 넣으면 어떻게 되는가?
+### 배율 행렬을 사슬의 맨 앞에 넣은 이유는 무엇인가? 맨 뒤에 넣으면 어떻게 되는가?
 
 행렬은 오른쪽부터 정점에 적용되기 때문에, 사슬의 맨 앞(맨 왼쪽)에 넣은 배율(Su)은 가장 나중에 적용됩니다. 즉 회전·이동·크기까지 다 끝나서 이미 제자리에 놓인 물체를, 위치까지 포함해서 통째로 축소시키는 역할을 합니다. 그래서 맨 앞에 넣으면 물체의 크기뿐 아니라 원점으로부터의 거리(위치)까지 함께 같은 비율로 줄어들어, 장면 전체가 축소된 형태로 화면 안에 들어오게 됩니다.
 
@@ -320,11 +320,11 @@ s = 1 / 60.61 ≈ 0.0165
 
 이 차이를 실제로 확인해보면, 맨 앞에 넣었을 때는 위치도 60.3s, 크기도 0.273s로 둘 다 배율만큼 줄어드는 반면, 맨 뒤에 넣었을 때는 위치는 60.3 그대로이고 크기만 줄어들어 달이 여전히 화면 밖에 머무릅니다.
 
-### 3. 세 물체에 같은 배율을 쓴 이유는 무엇인가?
+### 세 물체에 같은 배율을 쓴 이유는 무엇인가?
 
 지구, 달, 인공위성 세 물체 모두 동일한 s = 0.015를 사용했습니다. 물체마다 다른 배율을 쓰면 크기와 거리 사이의 실제 비율이 깨지기 때문입니다. Task 2의 목적은 크기와 거리를 임의로 조정하는 것이 아니라, Task 1에서 실제 수치(지구 반지름, 달의 궤도 거리와 반지름, 위성의 궤도 거리 등)로 만들어 둔 비율을 그대로 유지한 채 화면 안에 담기게 하는 것입니다. 그래서 같은 배율 하나를 공통으로 곱해 장면 전체를 동일한 비율로 축소시켜야, 지구·달·위성 사이의 상대적인 크기와 거리 관계가 실제 그대로 보존됩니다.
 
-### 4. 비율을 유지한 결과, 화면에서 지구와 인공위성은 어떻게 보이는가?
+### 비율을 유지한 결과, 화면에서 지구와 인공위성은 어떻게 보이는가?
 
 배율을 적용한 결과, 화면에는 세 물체가 모두 NDC 범위(-1~1) 안에 들어오게 되었습니다. 다만 실제 비율을 그대로 유지했기 때문에 크기 차이가 매우 극단적으로 드러납니다.
 
@@ -334,9 +334,10 @@ s = 1 / 60.61 ≈ 0.0165
 
 - Task 2 공유 링크: https://cg.catholic.ac.kr/~mgchoi/CG/demos/d02-transform-lab.html?d=eyJyYW5nZSI6eyJ4IjoiMSIsInkiOiIxIiwieiI6IjEifSwib2JqZWN0cyI6W3siaWQiOiJlYXJ0aCIsIm5hbWUiOiLsp4DqtawiLCJjb2xvciI6WzAuMzUsMC42LDAuOTVdLCJzdGVwcyI6W3sidHlwZSI6IlN1IiwiYXJncyI6WyIwLjAxNSJdfSx7InR5cGUiOiJSeSIsImFyZ3MiOlsiMjMuNSJdfSx7InR5cGUiOiJSeCIsImFyZ3MiOlsidCozMCJdfSx7InR5cGUiOiJTdSIsImFyZ3MiOlsiMSJdfSx7InR5cGUiOiJUIiwiYXJncyI6WyIwIiwiMCIsIjAiXX1dfSx7ImlkIjoibW9vbiIsIm5hbWUiOiLri6wiLCJjb2xvciI6WzAuNzgsMC43OCwwLjgyXSwic3RlcHMiOlt7InR5cGUiOiJTdSIsImFyZ3MiOlsiMC4wMTUiXX0seyJ0eXBlIjoiUnkiLCJhcmdzIjpbIjUuMSJdfSx7InR5cGUiOiJSeiIsImFyZ3MiOlsidCoxMCJdfSx7InR5cGUiOiJUIiwiYXJncyI6WyItNjAuMzQiLCIwIiwiMCJdfSx7InR5cGUiOiJTdSIsImFyZ3MiOlsiMC4yNyJdfV19LHsiaWQiOiJzYXQiLCJuYW1lIjoi7J246rO17JyE7ISxIiwiY29sb3IiOlswLjk1LDAuNzIsMC4zNV0sInN0ZXBzIjpbeyJ0eXBlIjoiU3UiLCJhcmdzIjpbIjAuMDE1Il19LHsidHlwZSI6IlJ5IiwiYXJncyI6WyI5OC4xMyJdfSx7InR5cGUiOiJSeiIsImFyZ3MiOlsidCoxMDAiXX0seyJ0eXBlIjoiVCIsImFyZ3MiOlsiLTEuMTEiLCIwIiwiMCJdfSx7InR5cGUiOiJTdSIsImFyZ3MiOlsiMC4wMDAwMDA1NSJdfSx7InR5cGUiOiJSeCIsImFyZ3MiOlsidCoxMDAiXX1dfV19
 
+- [Task 2 실행하기](https://hongchaeyeon413.github.io/cg-2026-solar/week2/task2.html)
 
 
-# Task 3 — 보는 사람을 위한 표현
+## Task 3 — 보는 사람을 위한 표현
 
 ### 내가 넣은 변환
 
@@ -448,12 +449,12 @@ Task 2까지의 값(Su 0.015, Ry 23.5, Rx t*30, T 0,0,0)을 유지하되, 지구
 - 크기(0.3)와 거리(-5) 모두 실제 비율을 깨고 임의로 정한 값이므로, 이는 실제 물리적 정확성보다 시각적 인지 가능성을 우선한 선택입니다.
 
 
-## 1. 실제 비율이 정보를 전달하기에 적합한지 판단과 그 이유
+### 실제 비율이 정보를 전달하기에 적합한지 판단과 그 이유
 
 실제 비율은 정보 전달에 적합하지 않다고 판단했습니다. Task 2에서 지구 반지름을 1로 정규화하고, 달(0.27)과 아리랑 3호(약 0.00000055)의 실제 크기 비율을 그대로 적용해본 결과, 위성은 화면에서 점 하나도 확인할 수 없을 정도로 작아졌습니다. 위성의 실제 궤도 반지름(1.11)도 지구 바로 근처에 있어서, 지구·달과 함께 한 화면에 놓고 보면 위성의 존재 자체를 시각적으로 파악할 수 없었습니다. 즉 수치상으로는 정확하지만, 보는 사람에게 "여기에 위성이 있다"는 정보조차 전달하지 못하므로 실제 비율은 이 목적에는 적합하지 않습니다.
 
 
-## 2. 더 나은 표현 방법 제안 및 제작
+### 더 나은 표현 방법 제안 및 제작
 
 '크기 과장하기' 방법을 제안하고 실제로 만들었습니다.
 
@@ -465,7 +466,7 @@ Task 2까지의 값(Su 0.015, Ry 23.5, Rx t*30, T 0,0,0)을 유지하되, 지구
 
 또한 위성의 거리(T)도 실제 비율(-1.11)로는 지구 표면에 거의 붙어 있어 구분이 어려웠기 때문에, 시각적으로 잘 구분되도록 -5로 조정했습니다.
 
-## 3. 제안한 방법의 장점과 잃는 것
+### 제안한 방법의 장점과 잃는 것
 
 장점: 지구, 달, 위성 세 물체가 모두 화면에서 뚜렷하게 구분되어 보입니다. 각 물체의 형태와 상대적 위치 관계(어느 것이 더 안쪽/바깥쪽 궤도에 있는지)를 한눈에 파악할 수 있어, 태양계 구조를 이해하는 데는 오히려 실제 비율보다 효과적입니다.
 
@@ -474,3 +475,5 @@ Task 2까지의 값(Su 0.015, Ry 23.5, Rx t*30, T 0,0,0)을 유지하되, 지구
 ![Task 3 — 보는 사람을 위한 표현](images/task3.png)
 
 - Task 3 공유 링크: https://cg.catholic.ac.kr/~mgchoi/CG/demos/d02-transform-lab.html?d=eyJyYW5nZSI6eyJ4IjoiMSIsInkiOiIxIiwieiI6IjEifSwib2JqZWN0cyI6W3siaWQiOiJlYXJ0aCIsIm5hbWUiOiLsp4DqtawiLCJjb2xvciI6WzAuMzUsMC42LDAuOTVdLCJzdGVwcyI6W3sidHlwZSI6IlN1IiwiYXJncyI6WyIwLjAxNSJdfSx7InR5cGUiOiJSeSIsImFyZ3MiOlsiMjMuNSJdfSx7InR5cGUiOiJSeCIsImFyZ3MiOlsidCozMCJdfSx7InR5cGUiOiJTdSIsImFyZ3MiOlsiMyJdfSx7InR5cGUiOiJUIiwiYXJncyI6WyIwIiwiMCIsIjAiXX1dfSx7ImlkIjoibW9vbiIsIm5hbWUiOiLri6wiLCJjb2xvciI6WzAuNzgsMC43OCwwLjgyXSwic3RlcHMiOlt7InR5cGUiOiJTdSIsImFyZ3MiOlsiMC4wMTUiXX0seyJ0eXBlIjoiUnkiLCJhcmdzIjpbIjUuMSJdfSx7InR5cGUiOiJSeiIsImFyZ3MiOlsidCoxMCJdfSx7InR5cGUiOiJUIiwiYXJncyI6WyItNjAuMzQiLCIwIiwiMCJdfSx7InR5cGUiOiJTdSIsImFyZ3MiOlsiMSJdfV19LHsiaWQiOiJzYXQiLCJuYW1lIjoi7J246rO17JyE7ISxIiwiY29sb3IiOlswLjk1LDAuNzIsMC4zNV0sInN0ZXBzIjpbeyJ0eXBlIjoiU3UiLCJhcmdzIjpbIjAuMDE1Il19LHsidHlwZSI6IlJ5IiwiYXJncyI6WyI5OC4xMyJdfSx7InR5cGUiOiJSeiIsImFyZ3MiOlsidCoxMDAiXX0seyJ0eXBlIjoiVCIsImFyZ3MiOlsiLTUiLCIwIiwiMCJdfSx7InR5cGUiOiJTdSIsImFyZ3MiOlsiMC4zIl19LHsidHlwZSI6IlJ4IiwiYXJncyI6WyJ0KjEwMCJdfV19XX0%3D
+
+- [Task 3 실행하기](https://hongchaeyeon413.github.io/cg-2026-solar/week2/task3.html)
