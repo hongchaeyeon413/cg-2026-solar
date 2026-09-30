@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3주차 실습 1 — 출발점</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0f16; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+
+<script>
+/* ============================================================================
+   3주차 실습 1 — 출발점 파일
+
+   삼각형 하나를 그리는 가장 작은 WebGL2 프로그램입니다.
+   이 파일 하나에 세 개의 프로그램이 모두 들어 있습니다.
+
+     ① 메인 애플리케이션 — 이 <script> 안의 JavaScript (CPU 에서 실행)
+     ② 버텍스 셰이더    — 아래 VS_SOURCE 문자열     (GPU 에서 실행)
+     ③ 프래그먼트 셰이더 — 아래 FS_SOURCE 문자열     (GPU 에서 실행)
+
+   강의 자료의 「실습 1」 을 보며 단계별로 고쳐 나가면 됩니다.
+   ============================================================================ */
+'use strict';
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1. 메시 데이터 — 이 숫자들이 전부입니다
+   ──────────────────────────────────────────────────────────────────────────
+   각 버퍼의 "같은 번째" 값이 같은 정점의 정보입니다.
+   예를 들어 정점 0 은 위치 (-0.75,-0.55,0), 법선 (0,0,1), 색 (0.92,0.35,0.32).
+   ══════════════════════════════════════════════════════════════════════════ */
+
+// 1. 메시 데이터 — 상자 하나를 만들어 주는 함수
+
+function makeBox(sx, sy, sz, r, g, b) {
+  const x = sx / 2;
+  const y = sy / 2;
+  const z = sz / 2;
+
+  // 결과를 담을 빈 배열 네 개
+  const positions = [];
+  const normals = [];
+  const colors = [];
+  const indices = [];
+
+  // 면 하나를 추가하는 함수.
+  // 꼭짓점 4개를 반시계 방향으로 주고, 그 면이 향하는 방향(법선)을 함께 줍니다.
+  function addFace(p0, p1, p2, p3, nx, ny, nz) {
+    // 지금까지 넣은 정점이 몇 개인지 = 이 면의 첫 정점 번호
+    const first = positions.length / 3;
+
+    // ① 꼭짓점 4개의 위치
+    positions.push(p0[0], p0[1], p0[2]);
+    positions.push(p1[0], p1[1], p1[2]);
+    positions.push(p2[0], p2[1], p2[2]);
+    positions.push(p3[0], p3[1], p3[2]);
+
+    // ② 법선 — 네 꼭짓점 모두 같은 값입니다 (그래서 꼭짓점을 공유하지 않고 복제합니다)
+    normals.push(nx, ny, nz);
+    normals.push(nx, ny, nz);
+    normals.push(nx, ny, nz);
+    normals.push(nx, ny, nz);
+
+    // ③ 색 — 위를 향한 면을 조금 밝게 해서 입체가 보이게 합니다
+    const shade = 0.75 + 0.25 * ny;
+    colors.push(r * shade, g * shade, b * shade);
+    colors.push(r * shade, g * shade, b * shade);
+    colors.push(r * shade, g * shade, b * shade);
+    colors.push(r * shade, g * shade, b * shade);
+
+    // ④ 사각형 하나는 삼각형 두 개로 만듭니다
+    indices.push(first + 0, first + 1, first + 2);
+    indices.push(first + 0, first + 2, first + 3);
+  }
+
+  //          꼭짓점 4개를 반시계 방향으로                                법선        어느 면
+  addFace([-x, -y,  z], [ x, -y,  z], [ x,  y,  z], [-x,  y,  z],   0,  0,  1);  // 앞
+  addFace([ x, -y, -z], [-x, -y, -z], [-x,  y, -z], [ x,  y, -z],   0,  0, -1);  // 뒤
+  addFace([ x, -y,  z], [ x, -y, -z], [ x,  y, -z], [ x,  y,  z],   1,  0,  0);  // 오른쪽
+  addFace([-x, -y, -z], [-x, -y,  z], [-x,  y,  z], [-x,  y, -z],  -1,  0,  0);  // 왼쪽
+  addFace([-x,  y,  z], [ x,  y,  z], [ x,  y, -z], [-x,  y, -z],   0,  1,  0);  // 위
+  addFace([-x, -y, -z], [ x, -y, -z], [ x, -y,  z], [-x, -y,  z],   0, -1,  0);  // 아래
+
+  return {
+    positions: new Float32Array(positions),
+    normals:   new Float32Array(normals),
+    colors:    new Float32Array(colors),
+    indices:   new Uint16Array(indices),
+  };
+}
+
+
+//1. 메시 데이터 — 공(구)을 만들어 주는 함수
+
+function makeSphere(radius, rows, cols, red, green, blue) {
+  const positions = [];
+  const normals = [];
+  const colors = [];
+  const indices = [];
+
+  // ① 위도·경도를 따라 격자점을 만듭니다
+  for (let i = 0; i <= rows; i++) {
+    const phi = Math.PI * i / rows;                 // 0(북극) ~ π(남극)
+
+    for (let j = 0; j <= cols; j++) {
+      const theta = 2 * Math.PI * j / cols;         // 경도 한 바퀴
+
+      // 반지름 1인 구 위의 점 = 그 점의 방향
+      const nx = Math.sin(phi) * Math.cos(theta);
+      const ny = Math.cos(phi);
+      const nz = Math.sin(phi) * Math.sin(theta);
+
+      positions.push(nx * radius, ny * radius, nz * radius);
+      normals.push(nx, ny, nz);                     // 구의 법선은 곧 방향벡터입니다
+
+      // 경도에 따라 밝기를 조금 달리해 둡니다. 그래야 자전이 눈에 보입니다.
+      const shade = 0.70 + 0.30 * Math.abs(Math.cos(theta * 2.0));
+      colors.push(red * shade, green * shade, blue * shade);
+    }
+  }
+
+  // ② 이웃한 격자점 네 개를 삼각형 두 개로 잇습니다
+  const stride = cols + 1;                          // 한 줄에 들어 있는 정점 수
+
+  for (let i = 0; i < rows; i++) {
+    for (let j = 0; j < cols; j++) {
+      const topLeft = i * stride + j;
+      const topRight = topLeft + 1;
+      const bottomLeft = topLeft + stride;
+      const bottomRight = bottomLeft + 1;
+
+      indices.push(topLeft, bottomLeft, topRight);
+      indices.push(topRight, bottomLeft, bottomRight);
+    }
+  }
+
+  return {
+    positions: new Float32Array(positions),
+    normals:   new Float32Array(normals),
+    colors:    new Float32Array(colors),
+    indices:   new Uint16Array(indices),
+  };
+}
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   2. 버텍스 셰이더 — 정점 하나마다 한 번씩 실행됩니다
+   ══════════════════════════════════════════════════════════════════════════ 
+   */
+   
+
+const VS_SOURCE = `#version 300 es
+
+layout(location=0) in vec3 aPos;      // 정점 위치 버퍼에서 들어온다
+layout(location=1) in vec3 aNormal;   // 법선 버퍼
+layout(location=3) in vec3 aColor;    // 정점 색 버퍼
+
+uniform float uTime;                  // 초 단위 시간 — 모든 정점이 같은 값을 받는다
+uniform mat4  uModel;                 // 물체를 세계 속 제자리에 놓는 행렬
+uniform mat4  uViewProj;              // 카메라에서 본 모습 + 원근
+
+out vec3 vColor;                      // 프래그먼트 셰이더로 넘길 값
+out vec3 vNormal;                     // 세계 기준 — 빛 계산용
+out vec3 vSurf;                       // 물체 기준 — 무늬가 표면에 붙어 돌게 함
+
+void main() {
+  vColor  = aColor;
+  vNormal = mat3(uModel) * aNormal;   // 빛 계산용: 변환된 법선
+  vSurf   = aNormal;                  // 무늬 계산용: 돌리기 전 로컬 법선
+  gl_Position = uViewProj * uModel * vec4(aPos, 1.0);
+}
+
+  // gl_Position 에 넣는 값이 그 정점의 최종 위치(NDC)입니다.
+  // 지금은 아무 변환도 하지 않으므로 정점 좌표가 그대로 화면 좌표가 됩니다.
+  // 
+  `;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   3. 프래그먼트 셰이더 — 픽셀 하나마다 한 번씩 실행됩니다
+   ══════════════════════════════════════════════════════════════════════════ */
+const FS_SOURCE = `#version 300 es
+precision highp float;
+
+in vec3 vColor;
+in vec3 vNormal;
+in vec3 vSurf;
+
+uniform float uTime;
+uniform int uPlanetType;
+
+out vec4 fragColor;
+
+// 3D 정수 격자점의 좌표를 하나의 의사 난수 값으로 변환합니다.
+float hash31(vec3 p) {
+  // 좌표 성분에 서로 다른 상수를 곱해 격자 방향별 패턴을 줄입니다.
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  // 좌표 성분을 교차 결합해 입력 위치에 민감한 해시를 만듭니다.
+  p += dot(p, p.yzx + 33.33);
+  // 곱한 성분의 소수 부분을 반환해 0~1 범위의 난수를 얻습니다.
+  return fract((p.x + p.y) * p.z);
+}
+
+// 8개 격자 꼭짓점의 해시를 부드럽게 보간하는 3D 값 잡음입니다.
+float noise3(vec3 p) {
+  // 입력 좌표가 속한 정수 격자 셀의 최소 꼭짓점을 구합니다.
+  vec3 i = floor(p);
+  // 격자 셀 안에서의 소수 좌표를 구합니다.
+  vec3 f = fract(p);
+
+  // x, y, z 세 축에 Cubic Hermite 완화 곡선을 적용해 셀 경계를 부드럽게 합니다.
+  f = f * f * (3.0 - 2.0 * f);
+
+  // 셀의 아래쪽 z면 네 꼭짓점에서 의사 난수를 구합니다.
+  float n000 = hash31(i + vec3(0.0, 0.0, 0.0));
+  float n100 = hash31(i + vec3(1.0, 0.0, 0.0));
+  float n010 = hash31(i + vec3(0.0, 1.0, 0.0));
+  float n110 = hash31(i + vec3(1.0, 1.0, 0.0));
+  // 셀의 위쪽 z면 네 꼭짓점에서 의사 난수를 구합니다.
+  float n001 = hash31(i + vec3(0.0, 0.0, 1.0));
+  float n101 = hash31(i + vec3(1.0, 0.0, 1.0));
+  float n011 = hash31(i + vec3(0.0, 1.0, 1.0));
+  float n111 = hash31(i + vec3(1.0, 1.0, 1.0));
+
+  // 아래쪽 z면의 네 값을 x 방향으로 두 쌍씩 보간합니다.
+  float x00 = mix(n000, n100, f.x);
+  float x10 = mix(n010, n110, f.x);
+  // 위쪽 z면의 네 값도 x 방향으로 두 쌍씩 보간합니다.
+  float x01 = mix(n001, n101, f.x);
+  float x11 = mix(n011, n111, f.x);
+  // 각 z면에서 x 보간 결과를 y 방향으로 보간합니다.
+  float y0 = mix(x00, x10, f.y);
+  float y1 = mix(x01, x11, f.y);
+  // 아래/위 z면 결과를 z 방향으로 보간해 최종 잡음을 만듭니다.
+  return mix(y0, y1, f.z);
+}
+
+// 여러 주파수의 3D 잡음을 더해 자연스러운 크기 변화를 만듭니다.
+float fbm(vec3 p) {
+  // 옥타브 잡음의 가중 합을 0부터 누적합니다.
+  float value = 0.0;
+  // 첫 번째 옥타브의 진폭을 절반으로 설정합니다.
+  float amplitude = 0.5;
+
+  // 주파수가 다른 다섯 옥타브를 합성합니다.
+  for (int i = 0; i < 5; i++) {
+    // 현재 주파수의 잡음에 진폭을 곱해 누적합니다.
+    value += amplitude * noise3(p);
+    // 좌표를 두 배 확대하고 상수 오프셋으로 격자 반복을 분산합니다.
+    p = p * 2.0 + vec3(17.0, 31.0, 47.0);
+    // 높은 주파수일수록 진폭을 절반으로 줄입니다.
+    amplitude *= 0.5;
+  }
+  // 모든 옥타브의 누적 잡음을 반환합니다.
+  return value;
+}
+
+void main() {
+  // 물체 로컬 법선을 단위 길이로 만들어 표면 방향 벡터 S로 사용합니다.
+  vec3 S = normalize(vSurf);
+  // 변환된 법선을 정규화해 조명 계산에 사용합니다.
+  vec3 N = normalize(vNormal);
+  // 표면을 비추는 방향을 단위 벡터로 설정합니다.
+  vec3 L = normalize(vec3(0.45, 0.8, 0.35));
+  // 법선과 빛 방향의 내적으로 확산광 세기를 구하고 음수는 제거합니다.
+  float diff = max(dot(N, L), 0.0);
+
+  // 단위 표면 방향의 y 성분을 위도에 해당하는 값으로 사용합니다.
+  float latitude = S.y;
+  // 3D 표면 위치에 시간 오프셋을 더해 움직이는 행성 대기 잡음을 샘플링합니다.
+  float flow = fbm(S * vec3(8.0, 11.0, 8.0) + vec3(uTime * 0.20, uTime * 0.12, 0.0));
+  // 적도에서는 주파수를 낮게, 극지방에서는 높게 설정해 띠 굵기를 달리합니다.
+  float bandFrequency = 13.0 + 8.0 * abs(latitude);
+  // 위도와 가변 주파수를 곱해 적도 쪽은 넓고 극지방 쪽은 촘촘한 위상을 만듭니다.
+  float bandPhase = latitude * bandFrequency;
+  // 주 줄무늬의 큰 굴곡을 줄이도록 3D 잡음 위상 변위를 약하게 적용합니다.
+  float warpedBandPhase = bandPhase + flow * 1.5;
+  // 완만한 3D 잡음 흐름으로 가로 띠 경계만 살짝 흔듭니다.
+  float bandWave = sin(warpedBandPhase);
+  // 사인 파형을 0~1 범위로 옮겨 줄무늬 마스크의 입력으로 만듭니다.
+  float horizontalBands = 0.5 + 0.5 * bandWave;
+  // 완만한 임계값으로 밝은 띠와 갈색 띠 사이를 부드럽게 나눕니다.
+  float stripe = smoothstep(0.20, 0.80, horizontalBands);
+
+  // 색상 구성: 상단/하단은 낮은 채도의 베이지, 중앙은 흰색/약한 갈색 줄무늬 반복
+  // 베이지 계열은 따뜻함을 유지하면서 채도를 살짝 낮춤
+  vec3 beigeTopBottom = vec3(0.70, 0.56, 0.42);
+  vec3 mutedCream = vec3(0.93, 0.87, 0.75);
+  vec3 mutedBrown = vec3(0.66, 0.42, 0.20);
+  vec3 darkerBeige = vec3(0.71, 0.51, 0.33);
+
+  // 절대 위도가 작을수록 중앙부 색상이 나타나도록 마스크를 만듭니다.
+  float centerMask = smoothstep(0.18, 0.82, 1.0 - abs(latitude));
+  // 적도에서 멀어질수록 갈색 줄무늬가 크림색으로 사라지도록 위도 마스크를 만듭니다.
+  float brownLatitudeMask = 1.0 - smoothstep(0.25, 0.68, abs(latitude));
+  // 줄무늬 마스크와 적도 중심 마스크를 함께 사용해 갈색 띠를 가운데에 모읍니다.
+  vec3 centerColor = mix(mutedCream, mutedBrown, stripe * brownLatitudeMask);
+
+  // 중앙 줄무늬와 상하단 베이지색을 위도 마스크로 섞습니다.
+  vec3 color = mix(beigeTopBottom, centerColor, centerMask);
+  // 극지방에 가까울수록 어두운 베이지를 더해 색 변화를 줍니다.
+  color = mix(color, darkerBeige, smoothstep(0.75, 1.0, abs(latitude)) * 0.35);
+
+  // 절댓값이 큰 주 파형의 안쪽 영역만 골라 흰 실선이 띠 밖으로 나가지 않게 합니다.
+  float bandInterior = smoothstep(0.35, 0.78, abs(bandWave));
+  // 더 높은 공간 주파수와 시간 이동을 가진 별도의 3D fBm으로 강한 소용돌이 왜곡을 만듭니다.
+  float whiteWarp = fbm(S * vec3(5.0, 17.0, 5.0) + vec3(-uTime * 0.11, uTime * 0.08, uTime * 0.13));
+  // 두 3D 잡음장을 큰 폭으로 위상에 더해 흰 실선을 심하게 구불거리게 합니다.
+  float whiteThreadPhase = bandPhase * 8.0 + (flow - 0.5) * 18.0 + (whiteWarp - 0.5) * 22.0;
+  // 왜곡된 고주파 파형의 봉우리로 촘촘한 흰색 실선 위치를 구합니다.
+  float whiteThreadWave = abs(sin(whiteThreadPhase));
+  // 파형 꼭대기만 선택해 여러 개의 매우 얇은 흰색 선 마스크를 만듭니다.
+  float thinWhiteStripe = smoothstep(0.992, 0.999, whiteThreadWave) * bandInterior;
+  // 각 가로 띠 안쪽에 촘촘한 흰색 실선을 은은하게 합성합니다.
+  color = mix(color, vec3(0.99, 0.98, 0.93), thinWhiteStripe * 0.85);
+
+  // 남반구 정면을 향하는 표면 방향을 정규화해 폭풍 중심으로 사용합니다.
+  vec3 stormCenter = normalize(vec3(0.35, -0.45, 0.90));
+  // 폭풍 중심에서 동서 방향으로 뻗는 접평면 축을 구합니다.
+  vec3 stormHorizontal = normalize(vec3(stormCenter.z, 0.0, -stormCenter.x));
+  // 폭풍 중심과 동서 축의 외적으로 남북 접평면 축을 구합니다.
+  vec3 stormVertical = normalize(cross(stormCenter, stormHorizontal));
+  // 현재 표면 방향과 폭풍 중심 사이의 3D 차이 벡터를 계산합니다.
+  vec3 stormDelta = S - stormCenter;
+  // 동서 성분을 압축해 해당 방향의 실제 폭이 더 넓어지도록 변환합니다.
+  float stormEastWest = dot(stormDelta, stormHorizontal) * 0.55;
+  // 남북 방향의 접평면 거리를 계산합니다.
+  float stormNorthSouth = dot(stormDelta, stormVertical);
+  // 표면 법선 방향의 작은 변화를 3D 거리 계산에 포함합니다.
+  float stormRadial = dot(stormDelta, stormCenter);
+  // 주황색 중심부는 유클리드 거리로 계산해 부드러운 타원형으로 만듭니다.
+  float stormOvalDistance = length(vec3(stormEastWest, stormNorthSouth, stormRadial));
+  // 2보다 작은 지수로 원형보다 마름모에 가까운 부드러운 윤곽을 설정합니다.
+  float stormDiamondPower = 1.35;
+  // 접평면 두 축과 약한 깊이 성분을 Lp 거리로 합쳐 마름모형 폭풍 거리를 구합니다.
+  float stormDiamondDistance = pow(pow(abs(stormEastWest), stormDiamondPower) + pow(abs(stormNorthSouth), stormDiamondPower) + pow(abs(stormRadial) * 0.25, stormDiamondPower), 1.0 / stormDiamondPower);
+
+  // 타원형 주황색 중심부의 부드러운 마스크를 만듭니다.
+  float stormCore = 1.0 - smoothstep(0.058, 0.078, stormOvalDistance);
+  // 마름모형 갈색 테두리는 중심부와 맞닿고 바깥쪽으로 부드럽게 퍼집니다.
+  float stormBorder = smoothstep(0.058, 0.078, stormDiamondDistance) * (1.0 - smoothstep(0.088, 0.120, stormDiamondDistance));
+
+  // 폭풍 중심에 사용할 주황색을 지정합니다.
+  vec3 stormColor = vec3(0.8, 0.43, 0.14); // 명도를 낮춘 주황색 대적점
+  // 기본 베이지를 크림색 쪽으로 조금 이동해 테두리를 살짝 밝힙니다.
+  vec3 stormBorderColor = mix(beigeTopBottom, mutedCream, 0.5);
+
+  // 테두리 중앙은 줄무늬와 같은 색으로 채우고 마스크 바깥쪽에서만 부드럽게 사라지게 합니다.
+  color = mix(color, stormBorderColor, stormBorder);
+  // 가장 안쪽에 주황색 폭풍 중심을 합성합니다.
+  color = mix(color, stormColor, stormCore * 0.95);
+
+  // 해왕성은 별도의 청록 대기와 바람 띠로 렌더링합니다.
+  if (uPlanetType == 1) {
+    // 변환된 법선의 y 성분을 위도 좌표로 사용합니다.
+    float lat = normalize(vNormal).y;
+    // 해왕성 대기의 옅은 청록색 기본 바탕을 설정합니다.
+    color = vec3(0.35, 0.65, 0.80);
+    // 시간에 따라 흐르는 3D fbm 기류 변위를 계산합니다.
+    float swirl = fbm(S * 3.0 + vec3(0.0, 0.0, uTime * 0.08)) - 0.5;
+    // 기류 변위를 위도에 더해 가로 바람 띠를 살짝 구불거리게 합니다.
+    float warpedLat = lat + swirl * 0.12;
+    // 왜곡된 위도와 시간으로 움직이는 가로 방향 사인 파동을 0~1로 변환합니다.
+    float windWave = 0.5 + 0.5 * sin(warpedLat * 15.0 + uTime * 0.8);
+    // 파동 값으로 옅은 청색과 딥 블루 바람띠를 자연스럽게 보간합니다.
+    vec3 windBandColor = mix(vec3(0.31, 0.59, 0.74), vec3(0.31, 0.50, 0.70), windWave);
+    // 바람띠를 해왕성 바탕색과 부드럽게 혼합합니다.
+    color = mix(color, windBandColor, 0.72);
+
+    // abs(lat) 0.65~0.95 구간을 부드럽게 감싸는 넓은 극지방 마스크입니다.
+    float polarZone = smoothstep(0.65, 0.95, abs(lat));
+    // 남극은 밝은 에메랄드 하늘색, 북극은 더 어두운 청록/푸른색입니다.
+    vec3 southPolarColor = vec3(0.50, 0.88, 0.95);
+    vec3 northPolarColor = vec3(0.20, 0.50, 0.75);
+    // 적도에서 극으로 갈수록 남극/북극 색을 부드럽게 전환합니다.
+    vec3 polarColor = mix(southPolarColor, northPolarColor, smoothstep(-0.02, 0.02, lat));
+    // 단색 바탕에는 극지방 색상만 넓고 부드럽게 합성합니다.
+    color = mix(color, polarColor, polarZone);
+    // 해왕성 정면 중앙의 로컬 표면 방향 하나만 폭풍 중심으로 지정합니다.
+    vec3 neptuneSpotCenter = vec3(0.0, 0.0, 1.0);
+    // 폭풍 중심을 기준으로 접평면의 동서 방향 축을 구합니다.
+    vec3 neptuneSpotEast = normalize(vec3(neptuneSpotCenter.z, 0.0, -neptuneSpotCenter.x));
+    // 중심 방향과 동서 축의 외적으로 접평면의 남북 방향 축을 구합니다.
+    vec3 neptuneSpotNorth = normalize(cross(neptuneSpotCenter, neptuneSpotEast));
+    // 현재 표면점에서 폭풍 중심까지의 로컬 방향 차이를 계산합니다.
+    vec3 neptuneSpotDelta = S - neptuneSpotCenter;
+    // 동서 거리를 압축해 폭풍의 가로 길이를 늘립니다.
+    float neptuneSpotX = dot(neptuneSpotDelta, neptuneSpotEast) * 0.38;
+    // 남북 거리는 유지해 타원의 높이를 조절합니다.
+    float neptuneSpotY = dot(neptuneSpotDelta, neptuneSpotNorth);
+    // 두 축 거리로 긴 타원형 폭풍 반경을 계산합니다.
+    float neptuneSpotDistance = length(vec2(neptuneSpotX, neptuneSpotY));
+    // 거리 기반 마스크 하나로 중앙의 단일 타원형 폭풍을 부드럽게 만듭니다.
+    float neptuneSpotMask = 1.0 - smoothstep(0.075, 0.14, neptuneSpotDistance);
+    // 해왕성 기본색과 같은 색조를 유지하고 명도만 10% 낮춘 단일 대흑점입니다.
+    color = mix(color, vec3(0.26, 0.43, 0.62), neptuneSpotMask * 0.72);
+    // 전체 구면을 덮는 저주파 3D fBm으로 큰 구름 영역을 만듭니다.
+    float cloudFlow = fbm(S * 4.0 + vec3(uTime * 0.035, -uTime * 0.05, uTime * 0.025));
+    // 위도와 경도를 함께 사용해 특정 중앙 띠에 몰리지 않는 긴 구름 형태를 만듭니다.
+    float cloudFiber = abs(sin(S.y * 4.0 + atan(S.z, S.x) * 1.2 + (cloudFlow - 0.5) * 2.5));
+    // 넓은 임계 범위로 개별 구름의 크기를 크게 유지합니다.
+    float cloudFiberMask = 1.0 - smoothstep(0.04, 0.35, cloudFiber);
+    // 높은 희소 임계값으로 전체 표면에 소수의 큰 구름만 남깁니다.
+    float cloudSparseMask = smoothstep(0.55, 0.62, cloudFlow);
+    float cloudMask = cloudFiberMask * cloudSparseMask;
+    color = mix(color, vec3(1.0, 1.0, 1.0), cloudMask * 0.9);
+  }
+    
+
+  // dot(N, L) 확산광과 낮은 주변광으로 낮과 밤의 경계를 표현합니다.
+  color *= 0.20 + 0.80 * diff;
+  // 최종 RGB 색상과 완전 불투명도를 프레임 버퍼로 출력합니다.
+  fragColor = vec4(color, 1.0);
+}
+`;
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   4. WebGL 준비
+   ══════════════════════════════════════════════════════════════════════════ */
+const canvas = document.getElementById('glcanvas');
+const gl = canvas.getContext('webgl2');
+if (!gl) {
+  document.body.innerHTML =
+    '<p style="color:#fff;font:16px sans-serif;padding:2rem">' +
+    'WebGL2 를 사용할 수 없습니다. 최신 Chrome 또는 Edge 로 열어 주세요.</p>';
+  throw new Error('no webgl2');
+}
+
+// 셰이더 문자열을 컴파일한다. 실패하면 오류에 "몇 줄"인지 나온다.
+function compileShader(type, source) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, source);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const kind = (type === gl.VERTEX_SHADER) ? '버텍스' : '프래그먼트';
+    throw new Error(kind + ' 셰이더 오류\n' + gl.getShaderInfoLog(s));
+  }
+  return s;
+}
+
+// 두 셰이더를 하나의 "프로그램" 으로 묶는다.
+function createProgram(vsSource, fsSource) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compileShader(gl.VERTEX_SHADER, vsSource));
+  gl.attachShader(p, compileShader(gl.FRAGMENT_SHADER, fsSource));
+  gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+    throw new Error('링크 오류\n' + gl.getProgramInfoLog(p));
+  }
+  return p;
+}
+
+const program = createProgram(VS_SOURCE, FS_SOURCE);
+
+// uniform 의 "위치"를 이름으로 찾아 둔다. 매 프레임 찾으면 느리다.
+const uTimeLoc = gl.getUniformLocation(program, 'uTime');
+const uPlanetTypeLoc = gl.getUniformLocation(program, 'uPlanetType');
+const uModelLoc = gl.getUniformLocation(program, 'uModel');
+const uViewProjLoc = gl.getUniformLocation(program, 'uViewProj');
+
+// ── 4×4 행렬 도구 ─────────────────────────────────────────────────
+// WebGL 은 행렬을 "열 우선(column-major)" 으로 받습니다.
+// 아래 코드에서 **한 줄이 행렬의 한 「열」** 입니다.
+// 2주차에 종이에 쓰던 모양을 옆으로 눕혀 놓은 것이라고 생각하면 됩니다.
+//
+//   종이에 쓰던 모양              코드에 적는 모양
+//   ┌ 1  0  0  tx ┐               1,  0,  0, 0,     ← 1열
+//   │ 0  1  0  ty │      →        0,  1,  0, 0,     ← 2열
+//   │ 0  0  1  tz │               0,  0,  1, 0,     ← 3열
+//   └ 0  0  0  1  ┘              tx, ty, tz, 1,     ← 4열 (이동량이 여기 들어간다)
+//
+// 각도·이동량 같은 값을 받아야 하므로 함수로 만들고,
+// 부를 때마다 새 배열을 돌려주어 서로 영향을 주지 않게 합니다.
+
+const M4 = {};
+
+// 단위행렬 — 곱해도 아무것도 바뀌지 않는 행렬
+M4.identity = function () {
+  return new Float32Array([
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  ]);
+};
+
+// 이동 — 2주차의 T(tx, ty, tz)
+M4.translate = function (tx, ty, tz) {
+  return new Float32Array([
+     1,  0,  0, 0,
+     0,  1,  0, 0,
+     0,  0,  1, 0,
+    tx, ty, tz, 1,
+  ]);
+};
+
+// 크기 — 2주차의 S(sx, sy, sz). 대각선에 배율을 놓는다
+M4.scale = function (sx, sy, sz) {
+  return new Float32Array([
+    sx,  0,  0, 0,
+     0, sy,  0, 0,
+     0,  0, sz, 0,
+     0,  0,  0, 1,
+  ]);
+};
+
+// x축 회전 — 2주차의 Rx
+M4.rotateX = function (angle) {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return new Float32Array([
+    1,  0, 0, 0,
+    0,  c, s, 0,
+    0, -s, c, 0,
+    0,  0, 0, 1,
+  ]);
+};
+
+// y축 회전 — 2주차의 Ry
+M4.rotateY = function (angle) {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return new Float32Array([
+    c, 0, -s, 0,
+    0, 1,  0, 0,
+    s, 0,  c, 0,
+    0, 0,  0, 1,
+  ]);
+};
+
+// z축 회전 — 2주차의 Rz
+M4.rotateZ = function (angle) {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return new Float32Array([
+     c, s, 0, 0,
+    -s, c, 0, 0,
+     0, 0, 1, 0,
+     0, 0, 0, 1,
+  ]);
+};
+
+// 두 행렬을 곱합니다.  결과 = a · b   (2주차에서 손으로 하던 그 곱셈)
+M4.multiply = function (a, b) {
+  const out = new Float32Array(16);
+  for (let col = 0; col < 4; col++) {
+    for (let row = 0; row < 4; row++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) {
+        sum = sum + a[k * 4 + row] * b[col * 4 + k];
+      }
+      out[col * 4 + row] = sum;
+    }
+  }
+  return out;
+};
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   5. 버퍼를 만들어 GPU 메모리로 보낸다
+   ──────────────────────────────────────────────────────────────────────────
+   VAO(Vertex Array Object) 는 "어떤 버퍼를 몇 번 자리에 어떻게 읽을지"를
+   한 묶음으로 기억해 두는 것입니다. 그려야 할 때 이것만 bind 하면 됩니다.
+   ══════════════════════════════════════════════════════════════════════════ */
+function createMesh(mesh) {
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+
+  function attribute(data, location, size) {
+    if (!data) return;
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);   // ← CPU 에서 GPU 로 복사
+    gl.enableVertexAttribArray(location);
+    gl.vertexAttribPointer(location, size, gl.FLOAT, false, 0, 0);
+  }
+  attribute(mesh.positions, 0, 3);   // location 0 ← aPos
+  attribute(mesh.normals,   1, 3);   // location 1 ← aNormal
+  attribute(mesh.colors,    3, 3);   // location 3 ← aColor
+
+  const ibo = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.indices, gl.STATIC_DRAW);
+
+  gl.bindVertexArray(null);
+  return { vao: vao, count: mesh.indices.length };
+}
+
+const ball  = createMesh(makeSphere(1.3, 64, 128, 1.0, 1.0, 1.0));  // 공중에 뜰 공
+const floor = createMesh(makeBox(8.0, 0.12, 8.0, 0.42, 0.50, 0.62));  // 아주 납작한 상자 = 바닥
+
+
+/* ══════════════════════════════════════════════════════════════════════════
+   6. 매 프레임 그린다
+   ══════════════════════════════════════════════════════════════════════════ */
+const startTime = performance.now();
+
+function render() {
+  // 캔버스 크기를 화면에 맞춘다 (고해상도 화면 대응)
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.floor(canvas.clientWidth * dpr);
+  const h = Math.floor(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  gl.viewport(0, 0, canvas.width, canvas.height);
+
+  gl.enable(gl.DEPTH_TEST);      // 앞에 있는 것만 남긴다
+
+  // 화면을 지운다
+  gl.clearColor(0.04, 0.06, 0.10, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  const time = (performance.now() - startTime) / 1000;
+    const aspect = canvas.width / canvas.height;
+
+  // ── 카메라 ─────────────────────────────────────────────────────
+  let camera = M4.identity();
+
+  // 정면에서 가까이 바라보게 하려면 회전은 거의 없애고,
+  // 카메라만 앞쪽으로 조금만 이동하면 됩니다.
+  camera = M4.multiply(M4.translate(0, 0, 5), camera);
+
+  // ⑤ 원근 — 마지막 행을 건드리면 먼 것이 작아집니다 (2주차 8절)
+  //    아래 -1/8 자리가 z 를 w 로 흘려보내는 자리입니다
+  const perspective = new Float32Array([
+    1, 0, 0,      0,
+    0, 1, 0,      0,
+    0, 0, 1, -1 / 8,
+    0, 0, 0,      1,
+  ]);
+  camera = M4.multiply(perspective, camera);
+
+  // ⑥ 보이는 공간을 -1 ~ 1 로 줄인다 (그냥 크기 조절입니다)
+  camera = M4.multiply(M4.scale(1 / (3.4 * aspect), 1 / 3.4, -1 / 30), camera);
+
+  const viewProj = camera;
+
+
+    gl.useProgram(program);                    // ← uniform 을 넣기 전에 반드시 먼저!
+  gl.uniform1f(uTimeLoc, time);
+  gl.uniformMatrix4fv(uViewProjLoc, false, viewProj);
+
+  // ── 바닥 — 원점에 그대로 둔다 (윗면이 y = 0 이 되도록 살짝 내림)
+  gl.uniformMatrix4fv(uModelLoc, false, M4.translate(0, -0.06, 0));
+  //gl.bindVertexArray(floor.vao);
+  //gl.drawElements(gl.TRIANGLES, floor.count, gl.UNSIGNED_SHORT, 0);
+
+  // ── 목성 — 3.13도 축 기울임을 유지하고 원래 자전 속도로 회전합니다.
+  const jupiterTilt = M4.rotateX(0.05462);
+  const jupiterModel = M4.multiply(
+    M4.translate(-1.45, 0.0, -2.0),
+    M4.multiply(jupiterTilt, M4.rotateY(time * 0.8))
+  );
+  gl.uniform1i(uPlanetTypeLoc, 0);
+  gl.uniformMatrix4fv(uModelLoc, false, jupiterModel);
+  gl.bindVertexArray(ball.vao);
+  gl.drawElements(gl.TRIANGLES, ball.count, gl.UNSIGNED_SHORT, 0);
+
+  // ── 해왕성 — 오른쪽에 작은 크기로 배치하고 목성과 다른 속도로 자전시킵니다.
+  const neptuneModel = M4.multiply(
+    M4.translate(1.35, 0.35, -2.0),
+    M4.multiply(M4.rotateY(time * 0.55), M4.scale(0.62, 0.62, 0.62))
+  );
+  gl.uniform1i(uPlanetTypeLoc, 1);
+  gl.uniformMatrix4fv(uModelLoc, false, neptuneModel);
+  gl.bindVertexArray(ball.vao);
+  gl.drawElements(gl.TRIANGLES, ball.count, gl.UNSIGNED_SHORT, 0);
+
+  gl.bindVertexArray(null);
+
+
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
