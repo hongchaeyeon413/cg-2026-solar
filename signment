@@ -1,0 +1,53 @@
+[33mcommit 38fbf6e992e62951d39e9c1fadc77015b78e9976[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: hong chaeyeon <hongcy0814@catholic.ac.kr>
+Date:   Wed Sep 16 20:45:33 2026 +0900
+
+    week2 과제 링크 추가 작성
+
+[33mcommit 22e8298e3b4d5acd6782058fac6137f6636dc802[m
+Author: hong chaeyeon <hongcy0814@catholic.ac.kr>
+Date:   Wed Sep 16 20:25:31 2026 +0900
+
+    week2 과제 작성
+
+[33mcommit 78caaa35539add87eb35391b9bcb19bff295f192[m
+Author: hong chaeyeon <hongcy0814@catholic.ac.kr>
+Date:   Wed Sep 9 17:27:38 2026 +0900
+
+    WebGL2 버전 콘솔 로그 추가
+
+[33mcommit 034aca4035f349a3df11c259d04cba9f89cff567[m[33m ([m[1;32mbackup-before-rebase[m[33m)[m
+Author: hong chaeyeon <hongcy0814@catholic.ac.kr>
+Date:   Tue Sep 8 22:21:25 2026 +0900
+
+    보랏빛이 감도는 어두운  색으로 배경색을 바꿈
+
+[33mcommit 102b7a77f344514445d6e676f1649830b1ffbd83[m
+Author: hong chaeyeon <hongcy0814@catholic.ac.kr>
+Date:   Tue Sep 8 22:12:51 2026 +0900
+
+    보랏빛이 감도는 색으로 배경색을 바꿈
+
+[33mcommit 4873fcde7c38c24d2a8810eb093e8b2d9c3a21c9[m
+Author: hong chaeyeon <hongcy0814@catholic.ac.kr>
+Date:   Tue Sep 8 21:50:39 2026 +0900
+
+    기본 index.html
+
+[33mcommit d98f145ed32c3494f2a86793af8c170e5227a39c[m
+Author: hong chaeyeon <hongcy0814@catholic.ac.kr>
+Date:   Mon Sep 7 23:32:10 2026 +0900
+
+    WebGL 캔버스 초기화
+
+[33mcommit 9fabed2a47c914dc13b08b73e82ad4f9ecba9078[m
+Author: hong chaeyeon <hongcy0814@catholic.ac.kr>
+Date:   Mon Sep 7 22:32:25 2026 +0900
+
+    1주차: WebGL 캔버스 초기화 추가
+
+[33mcommit e4f95cb562ba648c6c24facb368281cb40db40ee[m
+Author: 홍채연 <hongcy0814@catholic.ac.kr>
+Date:   Mon Sep 7 22:08:21 2026 +0900
+
+    Initial commit
