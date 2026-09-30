@@ -17,3 +17,262 @@
    기본 이벤트를 바꾸려면 d04-inspection-controls.js를 수정해도 됩니다.
    중요한 정보는 실제 구조물과 함께 관찰하도록 하고, 답만 목록에 표시하지 마세요.
 */
+
+
+/* 학생 확장 구현: 3D 오브젝트 직접 클릭 + 네비게이터 미니맵 인터페이스 */
+/**
+ * d04-inspection-student.js
+ * 세부 카메라 연산 및 시점 설계 반영
+ */
+/**
+ * d04-inspection-student.js
+ * 구면 좌표계 카메라 애니메이션 및 3D/미니맵 인터랙션 보완
+ */
+/**
+ * d04-inspection-student.js
+ * P1~P6, O1~O2 및 각 부품 시점 이동 컨트롤러
+ */
+(() => {
+  'use strict';
+
+  window.addEventListener('load', () => {
+    const viewer = window.InspectionViewer;
+    if (!viewer) return;
+
+    const { controls, model, hidden } = viewer;
+
+    let animId = null;
+    let isAnimating = false;
+
+    // --- UI: 외벽/지붕 숨김 해제 버튼 ---
+    const stage = document.querySelector('.stage');
+    const resetHideBtn = document.createElement('button');
+    resetHideBtn.id = 'reset-hide-btn';
+    resetHideBtn.textContent = '👁️️ 외벽/지붕 숨김 해제';
+    resetHideBtn.style.cssText = `
+      position: absolute;
+      top: 50px;
+      left: 14px;
+      z-index: 20;
+      padding: 6px 12px;
+      background: rgba(31, 111, 235, 0.9);
+      color: #ffffff;
+      border: 1px solid #5ca8fa;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: bold;
+      cursor: pointer;
+      display: none;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    `;
+    stage.appendChild(resetHideBtn);
+
+    resetHideBtn.addEventListener('click', () => {
+      hidden.clear();
+      resetHideBtn.style.display = 'none';
+    });
+
+    function showResetHideButton() {
+      if (hidden.size > 0) {
+        resetHideBtn.style.display = 'block';
+      }
+    }
+
+    // 구면 좌표계 변환 함수
+    function cameraStateFromEyeTarget(eye, target) {
+      const dx = eye[0] - target[0];
+      const dy = eye[1] - target[1];
+      const dz = eye[2] - target[2];
+      const distance = Math.hypot(dx, dy, dz) || 0.001;
+      const elevation = Math.asin(Math.max(-1, Math.min(1, dy / distance)));
+      const azimuth = Math.atan2(dx, dz);
+      return { distance, elevation, azimuth, target: [...target] };
+    }
+
+    // 시점 이동거리 d = R / sin(FOV / 2) 연산
+    function calculateCameraParams(targetPos, normalVec, radius, fovDeg = 45) {
+      const fovRad = (fovDeg * Math.PI) / 180;
+      const distance = Math.max(radius / Math.sin(fovRad / 2), 0.8);
+
+      const len = Math.hypot(...normalVec) || 1;
+      const normN = normalVec.map(v => v / len);
+
+      const eyePos = [
+        targetPos[0] + normN[0] * distance,
+        targetPos[1] + normN[1] * distance,
+        targetPos[2] + normN[2] * distance
+      ];
+
+      return { eye: eyePos, target: targetPos, distance };
+    }
+
+    // Ease-In-Out 애니메이션 이동
+    function smoothCameraTransition(targetParams, duration = 800) {
+      if (isAnimating) cancelAnimationFrame(animId);
+      isAnimating = true;
+
+      const s = controls.state;
+      const startTarget = [...s.target];
+      const startDist = s.distance;
+      const startAzi = s.azimuth;
+      const startEle = s.elevation;
+      const startFov = s.fov || 45;
+
+      const dest = cameraStateFromEyeTarget(targetParams.eye, targetParams.target);
+
+      let diffAzi = dest.azimuth - startAzi;
+      while (diffAzi > Math.PI) diffAzi -= Math.PI * 2;
+      while (diffAzi < -Math.PI) diffAzi += Math.PI * 2;
+
+      const startTime = performance.now();
+      const easeInOutCubic = t =>
+        t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+      function step(now) {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const ease = easeInOutCubic(progress);
+
+        s.target[0] = startTarget[0] + (dest.target[0] - startTarget[0]) * ease;
+        s.target[1] = startTarget[1] + (dest.target[1] - startTarget[1]) * ease;
+        s.target[2] = startTarget[2] + (dest.target[2] - startTarget[2]) * ease;
+
+        s.distance = startDist + (dest.distance - startDist) * ease;
+        s.azimuth = startAzi + diffAzi * ease;
+        s.elevation = startEle + (dest.elevation - startEle) * ease;
+        s.fov = startFov + ((targetParams.fov || 45) - startFov) * ease;
+
+        s.near = targetParams.near || 0.01;
+        s.orthographic = !!targetParams.orthographic;
+        if (targetParams.halfHeight) s.halfHeight = targetParams.halfHeight;
+
+        if (progress < 1) {
+          animId = requestAnimationFrame(step);
+        } else {
+          isAnimating = false;
+        }
+      }
+
+      animId = requestAnimationFrame(step);
+    }
+
+    // P1~P6, O1~O2, V1~V4 등 시점 이동 보완 함수
+    function moveTo(hit) {
+      if (!hit) return;
+      const rawId = hit.id || hit.label || '';
+      const id = rawId.split(' ')[0]; // P1, O1 등 ID 추출
+
+      if (id === 'O1') {
+        // 전면 조망 시점
+        smoothCameraTransition({
+          eye: [0, 5, 18],
+          target: [0, 2, 0],
+          fov: 50,
+          near: 0.01,
+          orthographic: false
+        });
+      } else if (id === 'O2') {
+        // 사시/측면 조망 시점
+        smoothCameraTransition({
+          eye: [16, 9, 14],
+          target: [0, 2, 0],
+          fov: 50,
+          near: 0.01,
+          orthographic: false
+        });
+      } else {
+        // P1~P6, V1~V4 및 개별 부품 시점
+        const signPart = model.signs.find(s => s.id === id);
+        const boxPart = model.boxes.find(b => b.id === id);
+        const part = signPart || boxPart;
+
+        const pos = hit.point || (part ? part.position : [0, 1.5, 0]);
+        let normal = hit.normal || [0, 0.2, 1];
+
+        if (signPart && signPart.yaw !== undefined) {
+          normal = [Math.sin(signPart.yaw), 0.2, Math.cos(signPart.yaw)];
+        }
+
+        const radius = hit.radius || (part && part.size ? Math.max(...part.size) * 0.8 : 0.8);
+
+        // 건물 내부 장비 시스루 가림 처리
+        if (id.includes('V') || (part && part.group === 'equipment') || pos[1] < 1.2) {
+          hidden.add('roof');
+          hidden.add('structure');
+          showResetHideButton();
+        }
+
+        const params = calculateCameraParams(pos, normal, radius, 40);
+        smoothCameraTransition({
+          eye: params.eye,
+          target: params.target,
+          fov: 40,
+          near: 0.01,
+          orthographic: false
+        });
+      }
+
+      const focusStatus = document.querySelector('#focus-status');
+      if (focusStatus) {
+        focusStatus.textContent = `🎯 ${id} 관찰 시점으로 이동 중`;
+      }
+    }
+
+    window.InspectionStudent = { moveTo };
+
+    // --- 점검 목록 클릭 연동 ---
+    const taskList = document.querySelectorAll('#tasks li');
+    taskList.forEach((li, index) => {
+      li.addEventListener('click', () => {
+        taskList.forEach(item => item.classList.remove('active'));
+        li.classList.add('active');
+
+        const taskData = model.tasks[index];
+        if (!taskData) return;
+
+        const signPart = model.signs.find(s => s.id === taskData.id);
+        const boxPart = model.boxes.find(b => b.id === taskData.id);
+        const part = signPart || boxPart;
+
+        const pos = part ? part.position : taskData.position || [0, 1.5, 0];
+        const radius = part ? (part.size ? Math.max(...part.size) * 0.8 : 0.8) : 1.0;
+        let normal = [0, 0.2, 1];
+
+        if (signPart && signPart.yaw !== undefined) {
+          normal = [Math.sin(signPart.yaw), 0.2, Math.cos(signPart.yaw)];
+        }
+
+        moveTo({
+          id: taskData.id,
+          point: pos,
+          normal: normal,
+          radius: radius,
+          group: part ? part.group : 'default'
+        });
+      });
+    });
+
+    // --- 미니맵 클릭 연동 ---
+    const minimapCanvas = document.querySelector('#minimap');
+    if (minimapCanvas) {
+      minimapCanvas.addEventListener('click', (e) => {
+        const rect = minimapCanvas.getBoundingClientRect();
+        const u = (e.clientX - rect.left) / rect.width;
+        const v = (e.clientY - rect.top) / rect.height;
+
+        const b = model.bounds;
+        const targetX = b.min[0] + u * (b.max[0] - b.min[0]);
+        const targetZ = b.max[2] - v * (b.max[2] - b.min[2]);
+
+        smoothCameraTransition({
+          eye: [targetX, controls.state.eye ? controls.state.eye[1] : 4, targetZ + 5],
+          target: [targetX, 1.0, targetZ],
+          fov: 45,
+          near: 0.01,
+          orthographic: false
+        });
+      });
+    }
+  });
+})();
