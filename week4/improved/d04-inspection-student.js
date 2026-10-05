@@ -19,14 +19,14 @@
 */
 
 
-/* 학생 확장 구현: 3D 오브젝트 직접 클릭 + 네비게이터 미니맵 인터페이스 */
+/* 학생 확장 구현: 3D 오브젝트 직접 클릭 인터페이스 */
 /**
  * d04-inspection-student.js
  * 세부 카메라 연산 및 시점 설계 반영
  */
 /**
  * d04-inspection-student.js
- * 구면 좌표계 카메라 애니메이션 및 3D/미니맵 인터랙션 보완
+ * 구면 좌표계 카메라 애니메이션 및 3D 인터랙션 보완
  */
 /**
  * d04-inspection-student.js
@@ -44,14 +44,14 @@
     let animId = null;
     let isAnimating = false;
 
-    // --- UI: 외벽/지붕 숨김 해제 버튼 ---
+    // --- UI: 외벽/지붕 숨김 토글 버튼 ---
     const stage = document.querySelector('.stage');
-    const resetHideBtn = document.createElement('button');
-    resetHideBtn.id = 'reset-hide-btn';
-    resetHideBtn.textContent = '👁️️ 외벽/지붕 숨김 해제';
-    resetHideBtn.style.cssText = `
+    const hideToggleBtn = document.createElement('button');
+    hideToggleBtn.id = 'hide-toggle-btn';
+    hideToggleBtn.style.cssText = `
       position: absolute;
-      top: 50px;
+      top: auto;
+      bottom: 52px;
       left: 14px;
       z-index: 20;
       padding: 6px 12px;
@@ -62,22 +62,24 @@
       font-size: 12px;
       font-weight: bold;
       cursor: pointer;
-      display: none;
       backdrop-filter: blur(4px);
       box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     `;
-    stage.appendChild(resetHideBtn);
+    stage.appendChild(hideToggleBtn);
 
-    resetHideBtn.addEventListener('click', () => {
-      hidden.clear();
-      resetHideBtn.style.display = 'none';
-    });
-
-    function showResetHideButton() {
-      if (hidden.size > 0) {
-        resetHideBtn.style.display = 'block';
-      }
+    function updateHideToggleLabel() {
+      const isHidden = hidden.has('structure') || hidden.has('roof');
+      hideToggleBtn.textContent = isHidden ? '👁 외벽/지붕 보이기' : '◉ 외벽/지붕 숨기기';
+      hideToggleBtn.setAttribute('aria-pressed', String(isHidden));
     }
+
+    hideToggleBtn.addEventListener('click', () => {
+      const isHidden = hidden.has('structure') || hidden.has('roof');
+      if (isHidden) { hidden.delete('structure'); hidden.delete('roof'); }
+      else { hidden.add('structure'); hidden.add('roof'); }
+      updateHideToggleLabel();
+    });
+    updateHideToggleLabel();
 
     // 구면 좌표계 변환 함수
     function cameraStateFromEyeTarget(eye, target) {
@@ -164,22 +166,24 @@
       const id = rawId.split(' ')[0]; // P1, O1 등 ID 추출
 
       if (id === 'O1') {
-        // 전면 조망 시점
+        // O1-A와 O1-B 명판을 함께 보는 본관 전면 직교 시점입니다.
         smoothCameraTransition({
-          eye: [0, 5, 18],
-          target: [0, 2, 0],
-          fov: 50,
+          eye: [-5.3, 2.6, 18],
+          target: [-5.3, 2.6, 6],
+          fov: 45,
           near: 0.01,
-          orthographic: false
+          orthographic: true,
+          halfHeight: 3.4
         });
       } else if (id === 'O2') {
-        // 사시/측면 조망 시점
+        // O2-A와 O2-B 명판을 함께 보는 별관 오른쪽 측면 직교 시점입니다.
         smoothCameraTransition({
-          eye: [16, 9, 14],
-          target: [0, 2, 0],
-          fov: 50,
+          eye: [23, 4.75, -0.3],
+          target: [10.8, 4.75, -0.3],
+          fov: 45,
           near: 0.01,
-          orthographic: false
+          orthographic: true,
+          halfHeight: 3.4
         });
       } else {
         // P1~P6, V1~V4 및 개별 부품 시점
@@ -200,7 +204,7 @@
         if (id.includes('V') || (part && part.group === 'equipment') || pos[1] < 1.2) {
           hidden.add('roof');
           hidden.add('structure');
-          showResetHideButton();
+          updateHideToggleLabel();
         }
 
         const params = calculateCameraParams(pos, normal, radius, 40);
@@ -253,26 +257,5 @@
       });
     });
 
-    // --- 미니맵 클릭 연동 ---
-    const minimapCanvas = document.querySelector('#minimap');
-    if (minimapCanvas) {
-      minimapCanvas.addEventListener('click', (e) => {
-        const rect = minimapCanvas.getBoundingClientRect();
-        const u = (e.clientX - rect.left) / rect.width;
-        const v = (e.clientY - rect.top) / rect.height;
-
-        const b = model.bounds;
-        const targetX = b.min[0] + u * (b.max[0] - b.min[0]);
-        const targetZ = b.max[2] - v * (b.max[2] - b.min[2]);
-
-        smoothCameraTransition({
-          eye: [targetX, controls.state.eye ? controls.state.eye[1] : 4, targetZ + 5],
-          target: [targetX, 1.0, targetZ],
-          fov: 45,
-          near: 0.01,
-          orthographic: false
-        });
-      });
-    }
   });
 })();

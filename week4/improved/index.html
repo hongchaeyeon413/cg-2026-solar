@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>복합 연구시설 — 스마트 점검 & 미니맵 뷰어</title>
+  <title>복합 연구시설 — 스마트 점검 뷰어</title>
   <link rel="stylesheet" href="demo.css">
   <style>
     .wrap {
@@ -19,25 +19,6 @@
       background: var(--d-canvas, #0f172a);
     }
     #cv {
-      width: 100%;
-      height: 100%;
-      display: block;
-    }
-    .minimap-card {
-      position: absolute;
-      right: 14px;
-      bottom: 14px;
-      width: 230px;
-      height: 190px;
-      background: rgba(18, 28, 42, 0.88);
-      border: 2px solid var(--d-accent, #1f6feb);
-      border-radius: 10px;
-      box-shadow: 0 6px 20px rgba(0,0,0,0.45);
-      overflow: hidden;
-      z-index: 10;
-      backdrop-filter: blur(6px);
-    }
-    #minimap {
       width: 100%;
       height: 100%;
       display: block;
@@ -86,17 +67,13 @@
     <canvas id="cv"></canvas>
     <div id="readings" class="readout"></div>
     <div class="hint-banner">
-      <span id="focus-status">💡 3D 부품 직접 클릭 또는 미니맵 클릭 시 관찰 시점으로 자동 이동합니다</span>
-    </div>
-
-    <div class="minimap-card">
-      <canvas id="minimap" width="230" height="190"></canvas>
+      <span id="focus-status">💡 3D 부품을 클릭하면 관찰 시점으로 자동 이동합니다</span>
     </div>
   </div>
 
   <div class="panel">
     <h1>복합 연구시설 점검</h1>
-    <p class="sub">스마트 클릭 & 미니맵 네비게이터</p>
+    <p class="sub">스마트 클릭 점검 뷰어</p>
     <button id="home" class="btn">기본 카메라 위치로 복귀</button>
     <button id="measure" class="btn">소요 시간 측정 시작</button>
     <div class="ctl">
