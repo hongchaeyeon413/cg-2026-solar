@@ -71,225 +71,255 @@
 
 ### 3-1. 사용자 및 관찰 목표
 
-- **타겟 사용자**: 시설을 처음 접하는 검수자가 복합 연구시설 안의 주요 점검 부품(밸브, 제어함, 펌프 등)의 위치와 명판 정보를 빠르고 정확하게 확인해야 하는 상황
-- **관찰 목표**: 트랙볼 조작의 비틀림이나 답답함 없이, 벽·난간에 가려진 내부 세부 장치에 바로 접근하고, 건물 전체에서 내가 어디에 있는지(맥락)를 계속 알 수 있게 하는 것
+* **타겟 사용자**: 시설을 처음 접하는 검수자가 복합 연구시설 안의 주요 점검 부품(밸브, 제어함, 펌프 등)의 위치와 명판 정보를 빠르고 정확하게 확인해야 하는 상황
+
+* **기존 문제**: 기본 트랙볼 조작에서는 줌 반응이 느리고, 회전 축이 비틀리거나 대각선으로 움직이며, 벽·난간·구조물에 의해 내부 장치가 가려지는 문제가 있었습니다. 또한 작은 명판을 읽기 위해 극단적으로 확대하면 건물 전체에서 현재 위치를 파악하기 어려워지는 문제가 발생했습니다.
+
+* **관찰 목표**: 트랙볼을 반복적으로 조작하지 않아도 여섯 지점의 장치를 글자를 읽을 수 있는 거리와 방향에서 정확하게 관찰하고, 벽·난간 등으로 가려진 내부 장치에도 빠르게 접근할 수 있도록 하는 것. 동시에 관찰 중에도 해당 장치가 건물의 어느 위치에 있는지 파악할 수 있도록 공간적 맥락을 유지하는 것을 목표로 합니다.
 
 ### 3-2. 대안 스케치 및 장단점 비교 (기본 조작의 불편점 기준)
 
-| 구분 | 대안 A — 측면 고정 UI 패널 | 대안 B — 우측 하단 네비게이터 미니맵 |
-| --- | --- | --- |
-| 개념 | 화면 가장자리에 `P1` ~ `P6`, `O1` ~ `O2` 관찰 위치 버튼, 카메라 리셋 버튼, 투영 전환 버튼을 고정 배치 | 화면 우측 하단에 건물 전체의 2D 미니맵을 두고, 현재 카메라의 위치와 시야를 초록색 사각형으로 표시 |
-| 장점 | 버튼을 한 번 누르면 장애물을 피해 최적의 관찰 시점으로 부드럽게 자동 이동 | 줌인해도 건물 전체에서 현재 위치(공간적 맥락)를 바로 알 수 있어 길 잃음 문제를 해결 |
-| 단점 | 버튼 패널이 3D 화면의 일부를 계속 차지해서 화면이 답답해짐 | 미니맵만으로는 세부 부품까지 트랙볼로 일일이 이동해야 해서 조작 피로가 남음 |
+| 구분     | 대안 A — 고정 UI 패널                                     | 대안 B — 3D 오브젝트 직접 클릭 + 점검 목록                                                     |
+| ------ | --------------------------------------------------- | -------------------------------------------------------------------------------- |
+| 개념     | 화면 가장자리에 P1~P6, O1~O2 등의 관찰 위치 버튼과 카메라 이동 기능을 고정 배치 | 3D 화면에서 장치를 직접 클릭하거나 점검 목록에서 대상을 선택하면 해당 장치를 중심으로 적절한 관찰 시점으로 자동 이동              |
+| 장점     | 버튼을 한 번 누르면 정해진 관찰 지점으로 이동할 수 있어 트랙볼 조작을 크게 줄일 수 있음 | 작은 장치를 직접 찾거나 목록에서 선택하면 해당 장치를 화면 중심과 회전 중심으로 설정하여 글자를 읽기 좋은 거리·방향으로 바로 접근할 수 있음 |
+| 단점     | 버튼과 패널이 화면을 계속 차지하여 3D 모델을 관찰할 수 있는 공간이 줄어듦         | 작은 대상은 직접 클릭하기 어려울 수 있으므로 점검 목록 등의 보조 선택 방법이 필요함                                 |
+| 공간적 맥락 | 개별 관찰 지점으로 이동한 뒤에는 전체 건물에서 현재 위치를 파악하기 어려울 수 있음     | 대상에 집중하면서도 현재 위치와 주변 구조를 함께 확인할 수 있도록 설계해야 함                                     |
+| 장애물 대응 | 정해진 시점으로 이동하더라도 벽이나 층에 의해 대상이 가려질 가능성이 있음           | 관찰 대상에 접근할 때 필요한 일부 층·벽을 숨기거나 투명하게 처리하여 내부 장치를 직접 확인할 수 있음                       |
 
-### 3-3. 최종 선택 및 결합 대안: "3D 오브젝트 직접 클릭 + 네비게이터 미니맵"
+### 3-3. 최종 선택 및 개선안: "3D 오브젝트 직접 클릭 + 점검 목록 클릭 시 적절한 관찰시점으로 이동"
 
-**결합 및 개선 이유**
+### **선택한 이유**
 
-화면 측면에 고정 UI 패널을 크게 띄우면, 미니맵과 함께 있을 때 화면 공간을 지나치게 많이 차지하는 문제가 있었습니다. 그래서 UI 요소를 최소화하기 위해 두 가지를 조합했습니다.
+화면 측면에 고정 UI 패널을 크게 띄우면 3D 모델을 관찰할 수 있는 공간을 계속 차지하고, 다른 UI와 함께 사용할 경우 화면이 복잡해지는 문제가 있습니다. 따라서 별도의 큰 패널을 중심으로 조작하기보다 **3D 오브젝트 직접 클릭과 점검 목록 선택을 결합하는 방식**을 선택했습니다.
 
-- 3D 화면 속 건물의 해당 위치나 부품을 마우스로 **직접 클릭**하면 그 관찰 시점으로 카메라가 부드럽게 이동합니다.
-- 우측 하단에는 **현재 위치를 나타내는 미니맵**을 그대로 유지했습니다.
+* 3D 화면에서 장치를 직접 클릭하면 선택한 부품을 **화면 중심과 회전 중심**으로 설정하고, 해당 장치의 명판과 형태를 확인하기 적절한 거리와 방향으로 카메라가 이동합니다.
+* 화면에서 직접 클릭하기 어려운 작은 장치는 **점검 목록에서 해당 장치를 선택**하여 동일한 방식으로 관찰할 수 있도록 합니다.
+* 여섯 지점(P1~P6)의 장치는 각각 글자를 읽을 수 있는 거리와 방향에서 관찰할 수 있도록 사전에 적절한 관찰 시점을 설정합니다.
+* O1은 **전면 직교 뷰**, O2는 **오른쪽 측면 직교 뷰**에서 관찰할 수 있도록 하여, 두 대상을 같은 배율과 왜곡 없는 조건에서 비교할 수 있도록 합니다.
+* 가로·세로 화면에서도 3D 모델의 비율이나 관찰 대상이 찌그러지지 않도록 화면 비율에 맞게 카메라와 뷰포트를 조정합니다.
 
-**줄인 조작 (What operation is reduced?)**
+### **장애물에 대한 개선**
 
-- **불필요한 드래그와 휠 조작 감소**: 줌 감도가 낮아서 휠을 수십 번 돌리거나, 회전 축이 비틀려 대각선으로 헤매던 트랙볼 조작을 없앴습니다.
-- **장애물 회피 조작 단축**: 벽이나 난간을 피해 시점을 복잡하게 돌아 이동할 필요 없이, 대상을 한 번 클릭하면 접근이 끝납니다.
+기존에는 벽, 난간, 다른 층의 구조물에 의해 장치가 가려질 경우 사용자가 트랙볼을 반복적으로 조작하여 장애물을 피해 들어가야 했습니다.
 
-**유지한 정보 (What information is maintained?)**
+이를 개선하기 위해 관찰 대상에 접근할 때 필요한 경우 **일부 층이나 벽을 숨기거나 투명하게 처리**할 수 있도록 합니다.
 
-- **공간적 맥락 (global context)**: 3D 화면을 극단적으로 줌인해서 명판 글씨를 읽는 중에도, 우측 하단 미니맵의 초록색 영역으로 건물 전체에서 카메라의 현재 위치를 계속 확인할 수 있습니다.
-- **정밀 시각 정보 (detail view)**: 클릭 한 번으로 이동하면서도, 관찰 대상(글씨, 밸브 등)이 읽기 좋은 각도와 거리로 유지됩니다.
+* 관찰을 위해 숨겨진 층·벽은 사용자가 현재 어떤 부분을 숨겼는지 확인할 수 있도록 별도로 표시합니다.
+* 숨긴 부분을 다시 표시할 수 있는 **복원 방법**을 제공합니다.
+* 장애물을 제거하더라도 밸브, 제어함, 펌프 등의 **모델 위치와 크기는 변경하지 않습니다.**
+* 명판의 위치와 크기, 실제 명판에 표시된 **내용 역시 그대로 보존**하여 관찰 대상의 실제 정보를 유지합니다.
 
-### 3-4. 세부 카메라 연산 및 시점 설계
+### **줄인 조작 (What operation is reduced?)**
 
-#### ① Eye · Target · Up 과 관찰 거리 결정
+* **불필요한 드래그와 휠 조작 감소**: 줌 감도가 낮아 같은 위치에 접근하기 위해 휠을 수십 번 돌리거나, 트랙볼 회전으로 카메라 축이 비틀리는 조작을 줄였습니다.
+* **장애물 회피 조작 단축**: 벽이나 난간을 피해 카메라를 복잡하게 이동하는 대신, 대상을 선택하면 적절한 관찰 시점으로 바로 이동하도록 했습니다.
+* **작은 대상 선택 조작 감소**: 화면에서 직접 클릭하기 어려운 작은 장치는 점검 목록에서 선택할 수 있도록 하여, 카메라를 반복적으로 움직여 대상을 찾아야 하는 과정을 줄였습니다.
+* **비교를 위한 뷰 조작 감소**: O1과 O2를 각각 전면·오른쪽 측면 직교 뷰로 제공하여 사용자가 직접 회전과 확대를 반복하지 않아도 같은 배율 조건에서 대상을 비교할 수 있도록 했습니다.
 
-- **Target (바라보는 점)**: 선택한 부품이나 명판의 중심 3D 좌표(`P_target`)로 정합니다.
-- **Eye (카메라 위치)**: 대상 명판의 법선 벡터 `N` 방향으로 거리 `d` 만큼 떨어진 곳에 둡니다. 그러면 명판을 항상 정면에서 직각으로 보게 되어 글자를 읽기 쉽습니다.
-- **Up (상방 벡터)**: 건물의 수직 축 `(0, 1, 0)` 을 유지해서 화면이 뒤집히거나 기울어지지 않게 합니다.
-- **관찰 거리 `d` 의 결정**: 대상의 바운딩 스피어 반지름을 `R`, 카메라 화각을 `FOV` 라 할 때, 대상이 화면에 가득 차면서 글자가 또렷하게 읽히는 거리를 아래 식으로 구합니다.
+### **유지한 정보 (What information is maintained?)**
 
-```text
-Eye = P_target + N * d
-d   = R / sin(FOV / 2)
-```
+* **정밀 시각 정보 (detail view)**: 선택한 장치를 화면 중심에 배치하고 글자를 읽을 수 있는 거리와 방향을 유지하여 명판과 부품의 세부 정보를 확인할 수 있습니다.
+* **공간적 맥락 (spatial context)**: 장치를 확대해서 관찰하더라도 주변 구조와 현재 위치를 함께 확인할 수 있도록 하여, 관찰 후 건물 전체에서 현재 위치를 다시 찾는 과정을 줄였습니다.
+* **모델 정보 보존**: 관찰을 위해 일부 층이나 벽을 숨기더라도 모델의 실제 위치와 크기는 변경하지 않습니다.
+* **명판 정보 보존**: 명판의 위치·크기와 실제 표기 내용을 그대로 유지하여 단순히 정보를 목록으로 보여주는 방식으로 관찰을 대체하지 않습니다.
+* **숨김 상태 정보**: 현재 숨겨진 층이나 벽이 무엇인지 사용자가 확인할 수 있도록 표시하고, 필요할 때 원래 상태로 복원할 수 있도록 합니다.
 
-작은 명판(`P2`, `P3` 등)은 `R` 이 작아 `d` 가 가깝게 계산되고, 옥상이나 건물 전체는 `R` 에 맞춰 `d` 가 자동으로 멀어집니다.
+### **구현 요구사항**
 
-#### ② 자유 회전 중심 (Orbit Center)
+* **P1~P6 여섯 지점 모두** 글자를 읽을 수 있는 거리와 방향에서 관찰할 수 있어야 합니다.
+* 각 관찰 시점에서 **어느 장치의 정보인지 명확하게 확인**할 수 있어야 합니다.
+* 가로·세로 화면 모두에서 3D 모델과 관찰 대상의 **비율이 찌그러지지 않아야 합니다.**
+* 관찰을 위해 필요한 경우 **일부 층·벽을 숨기거나 투명하게 처리**할 수 있어야 합니다.
+* 현재 숨겨진 부분을 사용자가 확인할 수 있도록 **숨김 상태를 표시**해야 합니다.
+* 숨긴 층·벽을 원래 상태로 되돌릴 수 있는 **복원 기능**을 제공해야 합니다.
+* 모델의 **위치·크기·명판 내용은 변경하지 않고 보존**해야 합니다.
+* 모든 표지를 크게 확대하거나 화면 목록에 답을 나열하는 방식으로 실제 3D 공간에서의 관찰을 대체하지 않아야 합니다.
+* 즉, 최종 개선안은 **사용자가 실제 3D 모델 안에서 장치를 확인하고 명판을 읽는 과정은 유지하면서, 카메라 이동과 장애물 회피에 필요한 불필요한 조작만 줄이는 것**을 목표로 합니다.
 
-- **전체 상태**: 건물 중심점을 기준으로 자유롭게 회전합니다.
-- **대상 선택 상태**: 선택한 부품의 중심(`Target`)을 회전 중심으로 자동 재설정합니다. 세부 부품 주변을 돌려 볼 때 물체가 화면 밖으로 튕겨 나가지 않습니다.
 
-#### ③ 직교(Orthographic)와 원근(Perspective) 투영의 구분 적용
 
-- **Perspective (원근 투영)**: `P1` ~ `P6` 세부 명판과 건물 전체를 탐색할 때 씁니다. 깊이감과 입체감을 줍니다.
-- **Orthographic (직교 투영)**: `O1` (전면 비교)과 `O2` (우측 측면 비교)로 전환할 때 씁니다. 원근에 따른 왜곡이 없어서, 전면 패널의 높이 정렬과 측면 돌출 길이를 같은 배율로 정확하게 비교할 수 있습니다.
+## 4. 실제 구현한 카메라·투영·입력 방식의 설명과 대표 코드
 
-#### ④ 가림(Occlusion), Near Clipping, 카메라 이동 경로
+### 4-1. 카메라 구조 개요
 
-- **시야 가림과 시스루(see-through)**: 1층 밸브 같은 내부 부품을 볼 때는 앞을 가리는 외벽과 난간 레이어를 잠시 투명하게(alpha blending) 하거나 숨깁니다. 화면 한쪽에는 `[숨김 해제]` 상태 표시 UI를 둡니다.
-- **Near Clipping Plane 보정**: 내부에 바짝 붙어 관찰할 때 벽이나 명판이 잘려 나가지 않도록 카메라 절두체(frustum)의 Near 값을 `0.01` 로 크게 줄입니다.
-- **카메라 이동 경로 (smooth transition)**: 순간 이동하면 멀미가 나거나 공간 감각을 잃기 쉽습니다. 그래서 시점 사이를 이동할 때 `Eye` 와 `Target` 좌표를 구면 선형 보간(slerp)과 ease-in-out 으로 0.8초 동안 부드럽게 이동시킵니다
+카메라는 **target(바라보는 점)** 과 **구면 좌표(azimuth, elevation, distance)** 로 상태를 저장하고, 매 프레임 eye를 계산합니다. 자유 조작, 팻말 접근, 직교 비교 뷰가 모두 같은 상태값을 공유합니다.
 
-## 4. 구현한 카메라·투영·입력 방식
+| 상태값 | 의미 |
+|---|---|
+| `target` | 카메라가 바라보는 점이자 자유 회전의 중심 |
+| `azimuth` | 수평 회전각 |
+| `elevation` | 수직 회전각 (±1.45 rad로 제한) |
+| `distance` | target에서 eye까지의 거리 (원근 투영에서 사용) |
+| `fov` | 수직 시야각 |
+| `near` | 가까운 클리핑 평면 |
+| `orthographic`, `halfHeight` | 직교 투영 여부, 화면에 보이는 세로 절반 길이 |
 
-### 4-1. 카메라 시스템
+### 4-2. eye · target · up 결정 방식
 
-**메커니즘**
-
-- **구면 좌표계 기반 궤도(orbit) 제어**: 회전 중심점(`target`), 거리(`distance`), 방위각(`azimuth`), 고도각(`elevation`)을 조합해 관찰점을 중심으로 회전합니다.
-- **관찰 거리 자동 계산**: 대상의 반경 `R` 과 시야각 `theta` (FOV)로, 대상이 화면에 알맞게 차는 거리 `d` 를 자동으로 구합니다.
-
-```text
-    d = R / sin(theta / 2)
-```
-
-- **Ease-in-out cubic 보간 애니메이션**: 시점을 옮길 때 방위각이 가장 짧은 경로로 돌도록 보정(azimuth shortest path wrapping)하고, 3차 완화 곡선(cubic ease-in-out)을 적용했습니다. 그래서 화면이 갑자기 튀지 않고 부드럽게 전환됩니다.
-
-**대표 코드**
-
-```javascript
-// 관찰 대상 반경(R)과 FOV 기준 최적 카메라 거리 계산
-function calculateCameraParams(targetPos, normalVec, radius, fovDeg = 45) {
-  const fovRad = (fovDeg * Math.PI) / 180;
-  const distance = Math.max(radius / Math.sin(fovRad / 2), 0.8);
-  const len = Math.hypot(...normalVec) || 1;
-  const normN = normalVec.map(v => v / len);
-
-  const eyePos = [
-    targetPos[0] + normN[0] * distance,
-    targetPos[1] + normN[1] * distance,
-    targetPos[2] + normN[2] * distance
-  ];
-  return { eye: eyePos, target: targetPos, distance };
+```js
+// d04-inspection-controls.js
+function orbit(){
+  const cp = Math.cos(state.elevation);
+  return [state.distance*cp*Math.sin(state.azimuth),
+          state.distance*Math.sin(state.elevation),
+          state.distance*cp*Math.cos(state.azimuth)];
 }
+eye = target + orbit();
+up  = [0, 1, 0];
+```
 
-// CUBIC Ease-In-Out 카메라 보간 이동 애니메이션
-function smoothCameraTransition(targetParams, duration = 800) {
-  const s = controls.state;
-  const startTarget = [...s.target];
-  const startDist = s.distance, startAzi = s.azimuth, startEle = s.elevation, startFov = s.fov || 45;
-  const dest = cameraStateFromEyeTarget(targetParams.eye, targetParams.target);
+- **up은 항상 `(0,1,0)`으로 고정**합니다. roll이 없어 수평선이 기울지 않고, 좌우·상하 드래그가 대각선으로 꼬이지 않습니다. elevation을 ±1.45 rad로 제한해 시선이 up과 평행해지는 특이점도 피합니다.
+- **팻말 접근 (P1~P6):** target은 팻말의 위치입니다. eye는 팻말의 **앞면 법선 방향**에 놓습니다.
+  - 법선: `[sin(yaw), 0.2, cos(yaw)]`. y 성분 0.2로 약 11° 위에서 내려다보게 해 글자가 읽히면서 입체감도 남깁니다.
+  - P5는 `yaw = π`이므로 건물 **뒤쪽**에서 보게 됩니다.
+- **직교 비교 (O1, O2):** target은 비교 대상 두 개의 중점입니다. eye는 관찰 축 위에서 target으로부터 약 12 m 떨어진 곳에 놓습니다.
 
-  let diffAzi = dest.azimuth - startAzi;
-  while (diffAzi > Math.PI) diffAzi -= Math.PI * 2;
-  while (diffAzi < -Math.PI) diffAzi += Math.PI * 2;
+| 과제 | eye | target | 시선 방향 |
+|---|---|---|---|
+| O1 | (-5.3, 2.6, 18) | (-5.3, 2.6, 6) | −z (전면) |
+| O2 | (23, 4.75, -0.3) | (10.8, 4.75, -0.3) | −x (우측면, 화면 왼쪽이 건물 앞쪽 +z) |
 
-  const startTime = performance.now();
-  const easeInOutCubic = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+### 4-3. 대상 크기와 FOV에 따른 관찰 거리
 
-  function step(now) {
-    const ease = easeInOutCubic(Math.min((now - startTime) / duration, 1));
-    s.target = startTarget.map((v, i) => v + (dest.target[i] - v) * ease);
-    s.distance = startDist + (dest.distance - startDist) * ease;
-    s.azimuth = startAzi + diffAzi * ease;
-    s.elevation = startEle + (dest.elevation - startEle) * ease;
-    s.fov = startFov + ((targetParams.fov || 45) - startFov) * ease;
+```js
+// d04-inspection-student.js
+const fovRad   = fovDeg * Math.PI / 180;
+const distance = Math.max(radius / Math.sin(fovRad / 2), 0.8);
+```
 
-    if ((now - startTime) / duration < 1) requestAnimationFrame(step);
+대상을 반지름 R의 구로 보고, 그 구가 수직 FOV 안에 꼭 들어오는 거리 `d = R / sin(FOV/2)` 를 사용합니다.
+
+- R = 팻말 긴 변 × 0.8 (정사각형 팻말의 반대각선이 변의 약 0.707배이므로, 모서리까지 구 안에 들어오는 값)
+- 접근 시 FOV = 40°
+- 최소 거리 0.8 m (아주 작은 명판에서 카메라가 과하게 붙는 것을 방지)
+
+| 팻말 | 크기 (m) | R (m) | 계산 거리 (m) | 실제 거리 (m) |
+|---|---|---|---|---|
+| P1 | 2.00 × 0.85 | 1.60 | 4.68 | 4.68 |
+| P2 | 0.55 × 0.28 | 0.44 | 1.29 | 1.29 |
+| P3 | 0.28 × 0.16 | 0.22 | 0.66 | **0.80** (최소 거리 적용) |
+| P4 | 0.90 × 0.40 | 0.72 | 2.11 | 2.11 |
+| P5 | 0.65 × 0.35 | 0.52 | 1.52 | 1.52 |
+| P6 | 0.42 × 0.22 | 0.34 | 0.98 | 0.98 |
+
+### 4-4. 자유 회전의 중심
+
+| 상황 | 회전 중심 | 이유 |
+|---|---|---|
+| 처음, "기본 카메라 위치로 복귀" | 전체 건물 근처 `(3, 3, 0)` | 전체 구조를 훑어보기에 적합 |
+| 대상을 선택한 뒤 | **선택한 팻말 위치** | 좌우로 돌려도 팻말이 화면 중앙에 남아 확인하기 편함 |
+
+- Shift+드래그 또는 우클릭 드래그로 중심을 옮길 수 있습니다.
+- 이동량은 화면 픽셀이 월드 길이에 대응하도록 계산합니다. 원근은 `2·distance·tan(fov/2)`, 직교는 `2·halfHeight`를 화면 높이로 나눕니다.
+
+### 4-5. 직교·원근 투영의 사용처와 이유
+
+| 용도 | 투영 | 이유 |
+|---|---|---|
+| 기본 뷰, P1~P6 팻말 읽기 | **원근** | 자연스러운 깊이감과 주변 장비와의 공간 관계, 자유 회전과의 궁합 |
+| O1 전면 패널 비교, O2 측면 돌출 비교 | **직교** | 높이·폭·돌출 정도를 깊이와 무관하게 같은 비율로 비교하기 위함 |
+
+원근 투영에서는 가까운 물체가 더 크게 보입니다. O1의 패널 B(z = 6.8)는 패널 A(z = 5.2)보다 앞에 있어서 원근 뷰에서는 B가 더 커 보이지만, 직교 투영에서는 같은 크기가 같게 보여 화면에서 직접 비교할 수 있습니다. 두 과제는 `halfHeight = 3.4`(보이는 세로 범위 6.8 m)로 대상과 지지대를 모두 담습니다.
+
+**직교 뷰의 확대·축소:** 직교에서는 거리를 바꿔도 화면 크기가 변하지 않으므로, 휠과 `+`/`-` 키가 `distance`가 아니라 `halfHeight`를 조절하도록 했습니다.
+
+```js
+// d04-inspection-controls.js
+function zoom(f){
+  if (state.orthographic) state.halfHeight = clamp(state.halfHeight*f, 0.3, 40);
+  else                    state.distance   = clamp(state.distance*f, 0.18, 120);
+}
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  zoom(Math.exp(e.deltaY * .0035));
+  state.actions++;
+}, { passive: false });
+```
+
+### 4-6. 가림, near 클리핑, 카메라 이동 경로
+
+#### 가림 처리
+
+- `hidden` 집합에 `structure`(바닥·벽·기둥)와 `roof`(태양광 패널) 그룹을 넣어 건물 외피를 숨기는 **시스루** 방식을 사용합니다. 화면의 토글 버튼으로 직접 켜고 끌 수도 있습니다.
+- 팻말은 팻말 ID만 `hidden`으로 검사하므로 **외벽을 숨겨도 항상 그려집니다.**
+- 팻말 뒷판은 양면으로 그리고, 글자 면은 `CULL_FACE`를 켜서 뒤에서 볼 때 글자가 거울상으로 보이지 않게 했습니다.
+- 클릭 판정도 같은 규칙을 따릅니다. 숨긴 부품은 무시하고, 난간·기둥처럼 가는 구조물은 클릭을 가리지 않게 건너뜁니다.
+
+#### near 클리핑
+
+- 접근 시 `near = 0.01`을 사용합니다. 최소 거리 0.8 m에서도 가까운 면이 잘리지 않고, 너무 작게 잡아 깊이 정밀도를 해치지도 않는 값입니다.
+- 직교 뷰의 eye는 대상 바깥 약 12 m에 두어 앞에 가리는 구조물이 없게 했습니다.
+
+#### 카메라 이동 경로
+
+eye를 직선으로 옮기지 않고 target, distance, azimuth, elevation, fov를 같은 easing 값으로 각각 보간합니다. 대상을 계속 바라보며 호를 그리듯 접근하게 됩니다.
+
+```js
+// d04-inspection-student.js — easeInOutCubic, 800 ms
+const easeInOutCubic = t =>
+  t < 0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3) / 2;
+
+// 방위각은 최단 방향으로 회전하도록 −π ~ π로 정규화
+let diffAzi = dest.azimuth - startAzi;
+while (diffAzi >  Math.PI) diffAzi -= Math.PI * 2;
+while (diffAzi < -Math.PI) diffAzi += Math.PI * 2;
+
+s.azimuth   = startAzi + diffAzi * ease;
+s.elevation = startEle + (dest.elevation - startEle) * ease;
+s.distance  = startDist + (dest.distance - startDist) * ease;
+```
+
+새 클릭이 들어오면 이전 애니메이션을 `cancelAnimationFrame`으로 취소하고 새 이동을 시작합니다.
+
+### 4-7. 입력 방식
+
+| 입력 | 동작 |
+|---|---|
+| 좌클릭 드래그 | 선택 중심 기준 회전 |
+| 우클릭 드래그 / Shift + 드래그 | 중심 이동(pan) |
+| 마우스 휠 | 확대·축소 (원근은 `distance`, 직교는 `halfHeight`) |
+| 방향키, `+`, `-`, `Home` | 키보드 회전, 확대·축소, 기본 위치 복귀 |
+| 3D 팻말·장비 클릭 | 해당 팻말 관찰 시점으로 자동 이동 |
+| 오른쪽 점검 목록 클릭 | 같은 이동 로직 실행 |
+
+- 드래그 이동 거리가 4 px보다 작으면 클릭, 크면 드래그로 판정해 회전 중에 접근이 발동하지 않게 했습니다.
+
+#### 클릭 판정(피킹)
+
+화면 좌표를 광선으로 바꾼 뒤 가장 가까운 대상을 고르고, 장비 부품은 `OWNER` 표로 팻말 ID에 연결합니다.
+
+```js
+// d04-inspection-viewer.js
+function pointerRay(e){
+  /* ... forward, right, up 계산 ... */
+  if (c.orthographic){
+    // 직교: 화면 평면 위의 점에서 시선과 평행하게 나가는 광선
+    const origin = add(add(c.eye, scale(right,(2*u-1)*half*aspect)), scale(up,(1-2*v)*half));
+    return { origin, direction: forward };
   }
-  requestAnimationFrame(step);
-}
-```
-
-### 4-2. 투영 방식
-
-**메커니즘**
-
-- **원근·직교 투영 행렬 지원**: 기본 뷰어에서는 원근(perspective) 투영 행렬을 쓰고, 카메라 옵션(`camera.orthographic`)에 따라 직교(orthographic) 행렬로 바꿀 수 있습니다.
-- **행렬 곱**: 뷰 행렬과 투영 행렬을 곱해 셰이더에 넘길 통합 변환 행렬을 만듭니다.
-
-```text
-    VP = M_proj * M_view
-```
-
-- **2D 미니맵 매핑**: 3D 월드의 바운딩 박스(bounding box) 범위를 2D 캔버스 좌표로 정규화해 매핑하고, 카메라의 시선 중심점(`target`) 위치에 사각형 영역을 그려 현재 위치를 보여 줍니다.
-
-**대표 코드**
-
-```javascript
-// WebGL 3D 투영 및 뷰 변환 행렬 구성
-function drawView(camera, viewport = [0, 0, canvas.width, canvas.height]) {
-  gl.viewport(...viewport);
-  M.lookAt(view, camera.eye, camera.target, camera.up || [0, 1, 0]);
-
-  if (camera.orthographic) {
-    const half = camera.halfHeight || 8;
-    M.ortho(projection, -half * w / h, half * w / h, -half, half, camera.near || 0.02, camera.far || 180);
-  } else {
-    M.perspective(projection, (camera.fov || controls.state.fov) * Math.PI / 180, w / h, camera.near || 0.02, camera.far || 180);
-  }
-
-  M.multiply(vp, projection, view);
-  gl.uniformMatrix4fv(U.uVP, false, vp);
+  // 원근: eye에서 출발하는 광선
+  return { origin: c.eye, direction: norm(add(add(forward,
+           scale(right,(2*u-1)*tan*aspect)), scale(up,(1-2*v)*tan))) };
 }
 
-// 2D 미니맵 직교 좌표 투영 및 시점 영역 렌더링
-function drawMinimap(camera) {
-  const b = model.bounds;
-  const sx = (w - 2 * pad) / (b.max[0] - b.min[0]);
-  const sz = (h - 2 * pad) / (b.max[2] - b.min[2]);
-  const px = x => pad + (x - b.min[0]) * sx;
-  const pz = z => h - pad - (z - b.min[2]) * sz;
-
-  const tx = px(camera.target[0]), tz = pz(camera.target[2]);
-  miniCtx.fillStyle = 'rgba(34, 197, 94, 0.38)';
-  miniCtx.fillRect(tx - 22, tz - 18, 44, 36);
-  miniCtx.strokeStyle = '#10b981';
-  miniCtx.strokeRect(tx - 22, tz - 18, 44, 36);
-}
+// 박스는 AABB(slab) 판정, 팻말은 사각형 면 판정
+const OWNER = { 'valve-body':'P2', 'cabinet':'P3', 'roof-service':'P4',
+                'rear-pipe':'P5',  'annex-pump':'P6', 'o1-a':'O1', 'o2-a':'O2' /* ... */ };
 ```
 
-### 4-3. 입력 및 피킹 방식
+- 박스를 구(sphere)가 아닌 **정확한 AABB**로 판정해, 큰 바닥판·벽이 어디를 눌러도 먼저 잡히던 문제를 해결했습니다.
+- 직교 뷰에서는 광선의 원점이 클릭 위치마다 달라지도록 처리했습니다.
 
-**메커니즘**
+### 4-8. 한계와 개선점
 
-- **광선 투사(ray casting) 기반 3D 피킹**: 뷰포트 마우스 좌표 `(u, v)` 를 카메라 FOV와 화면 비율(aspect ratio)을 반영해 3D 월드의 시선 광선(ray)으로 바꿉니다.
-- **바운딩 스피어(bounding sphere) 교차 판별**: 광선과 구의 교차 방정식을 풀어서 3D 팻말(`P1` ~ `P6`, `O1` ~ `O2`)과 부품 박스에 부딪혔는지 판별합니다.
+1. **외피 자동 숨김 조건이 거의 맞지 않습니다.** `moveTo`의 조건이 박스 ID, `'V'` 포함 여부, `y < 1.2`를 검사하는데, 클릭하면 `P2` 같은 팻말 ID가 넘어와서 조건이 대부분 성립하지 않습니다. 토글 버튼으로 직접 숨기는 방식은 정상 동작합니다. 자동 숨김을 의도대로 동작시키려면 아래처럼 바꿉니다.
 
-```text
-    t^2 + 2bt + c = 0
+```js
+   // 기존
+   if (id.includes('V') || (boxPart && boxPart.group === 'equipment') || pos[1] < 1.2) { ... }
+   // 개선
+   if (focusSign && focusSign.group === 'equipment') { ... }
 ```
 
-- **통합 이벤트 처리**: 3D 화면 클릭, 미니맵 2D 영역 클릭, HTML 점검 목록 항목 클릭을 모두 하나의 `moveTo()` 진입점에 연결해서, 어느 방식으로 눌러도 같은 방식으로 카메라가 전환되게 했습니다.
-
-**대표 코드**
-
-```javascript
-// 마우스 포인터 2D 좌표 -> 3D Ray 방향 벡터 생성
-function pointerRay(e) {
-  const r = canvas.getBoundingClientRect();
-  const u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height;
-  const tan = Math.tan((controls.state.fov) * Math.PI / 360), aspect = r.width / r.height;
-
-  const forward = norm(sub(c.target, c.eye));
-  const right = norm(cross(forward, c.up || [0, 1, 0]));
-  const up = norm(cross(right, forward));
-
-  return {
-    origin: c.eye,
-    direction: norm(add(add(forward, right * ((2 * u - 1) * tan * aspect)), up * ((1 - 2 * v) * tan)))
-  };
-}
-
-// 3D 객체 피킹 연산 (팻말 및 부품 교차 판별)
-function pick(e) {
-  const ray = pointerRay(e);
-  let best = null;
-
-  for (const s of signs) {
-    const radius = Math.max(s.size[0], s.size[1], 1.2) * 0.8;
-    const t = raySphere(ray, s.position, radius);
-    if (t < Infinity && (!best || t < best.t)) {
-      best = {
-        t, point: s.position,
-        normal: [Math.sin(s.yaw || 0), 0.2, Math.cos(s.yaw || 0)],
-        radius, id: s.id
-      };
-    }
-  }
-  return best;
-}
-```
+2. **투영 전환이 보간되지 않습니다.** 원근과 직교는 값을 섞을 수 없어서, 이동을 시작하는 첫 프레임에 `orthographic`과 `halfHeight`가 바로 바뀝니다. 그래서 O1, O2로 이동하는 동안 화면이 갑자기 직교 투영으로 바뀌어 보입니다. 개선하려면 FOV를 아주 작게 줄이면서 distance를 늘리는 방식으로 원근을 직교에 근사시켜 전환할 수 있습니다.
