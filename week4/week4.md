@@ -2,7 +2,7 @@
 
 ### 1-1. 기본 버전 (Baseline)
 
-- 실행 주소: [https://your-github-id.github.io/repository-name/week4/baseline/](https://your-github-id.github.io/repository-name/week4/baseline/)
+- 실행 주소: [https://hongchaeyeon413.github.io/cg-2026-solar/week4/baseline/](https://hongchaeyeon413.github.io/cg-2026-solar/week4/baseline/)
 - 조작법:
 
     - 마우스 좌클릭 + 드래그: 모델 중심 회전 (trackball rotate)
@@ -12,7 +12,7 @@
 
 ### 1-2. 개선 버전 (Improved)
 
-- 실행 주소: [https://your-github-id.github.io/repository-name/week4/improved/](https://your-github-id.github.io/repository-name/week4/improved/)
+- 실행 주소: [https://hongchaeyeon413.github.io/cg-2026-solar/week4/improved/](https://hongchaeyeon413.github.io/cg-2026-solar/week4/improved/)
 - 조작법:
 
     - 기존 트랙볼 조작 유지: 마우스 좌클릭, 우클릭, 휠로 자유롭게 탐색할 수 있습니다.
