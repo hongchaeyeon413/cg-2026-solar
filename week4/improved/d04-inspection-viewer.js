@@ -1,5 +1,7 @@
 /* WebGL2 렌더러. drawView를 여러 번 호출하면 분할 뷰를 구성할 수 있습니다.
    기본 기능은 트랙볼/이동/거리 조절/전체 보기뿐이며 자동 안내는 구현하지 않습니다. */
+/* WebGL2 렌더러. drawView를 여러 번 호출하면 분할 뷰를 구성할 수 있습니다.
+   기본 기능은 트랙볼/이동/거리 조절/전체 보기뿐이며 자동 안내는 구현하지 않습니다. */
 (() => {
   'use strict';
   const canvas=document.querySelector('#cv'),gl=canvas.getContext('webgl2',{antialias:true}),read=document.querySelector('#readings');
@@ -38,49 +40,116 @@
   const dot=(a,b)=>a.reduce((s,v,i)=>s+v*b[i],0);
   const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
   const norm=v=>{const n=Math.hypot(...v)||1;return v.map(x=>x/n);};
-  
+
+  /* ===================== 피킹(클릭 판정) ===================== */
+
+  // 클릭 위치에서 나가는 광선. 원근/직교 모두 지원합니다.
   function pointerRay(e){
     const r=canvas.getBoundingClientRect(),c=controls.camera(),u=(e.clientX-r.left)/r.width,v=(e.clientY-r.top)/r.height;
     const forward=norm(sub(c.target,c.eye)),right=norm(cross(forward,c.up||[0,1,0])),up=norm(cross(right,forward));
-    const tan=Math.tan((c.fov||controls.state.fov)*Math.PI/360),aspect=r.width/r.height;
+    const aspect=r.width/r.height;
+    if(c.orthographic){
+      const half=c.halfHeight||8;
+      const origin=add(add(c.eye,scale(right,(2*u-1)*half*aspect)),scale(up,(1-2*v)*half));
+      return {origin,direction:forward};
+    }
+    const tan=Math.tan((c.fov||controls.state.fov)*Math.PI/360);
     return {origin:c.eye,direction:norm(add(add(forward,scale(right,(2*u-1)*tan*aspect)),scale(up,(1-2*v)*tan)))};
   }
-  function raySphere(ray,center,radius){const oc=sub(ray.origin,center),b=dot(oc,ray.direction),h=b*b-dot(oc,oc)+radius*radius;if(h<0)return Infinity;const t=-b-Math.sqrt(h);return t>0?t:(-b+Math.sqrt(h));}
-  
+
+  // 축 정렬 박스(AABB)와 광선의 정확한 교차 (slab 방식)
+  function rayBox(ray,p){
+    let tmin=0,tmax=Infinity;
+    for(let i=0;i<3;i++){
+      const lo=p.position[i]-p.size[i]/2,hi=p.position[i]+p.size[i]/2,o=ray.origin[i],d=ray.direction[i];
+      if(Math.abs(d)<1e-9){if(o<lo||o>hi)return Infinity;continue;}
+      let t1=(lo-o)/d,t2=(hi-o)/d;if(t1>t2)[t1,t2]=[t2,t1];
+      tmin=Math.max(tmin,t1);tmax=Math.min(tmax,t2);
+      if(tmin>tmax)return Infinity;
+    }
+    return tmin;
+  }
+
+  // 팻말(사각형 면)과 광선의 교차. 클릭하기 쉽도록 약간 키운 영역을 씁니다.
+  function raySign(ray,s){
+    const yaw=s.yaw||0,n=[Math.sin(yaw),0,Math.cos(yaw)],xAxis=[Math.cos(yaw),0,-Math.sin(yaw)];
+    const denom=dot(ray.direction,n);if(Math.abs(denom)<1e-6)return Infinity;
+    const t=dot(sub(s.position,ray.origin),n)/denom;if(t<=0)return Infinity;
+    const p=sub(add(ray.origin,scale(ray.direction,t)),s.position);
+    const halfW=Math.max(s.size[0]/2*1.4,0.25),halfH=Math.max(s.size[1]/2*1.4,0.2);
+    return (Math.abs(dot(p,xAxis))<=halfW&&Math.abs(p[1])<=halfH)?t:Infinity;
+  }
+
+  // 장비 부품 → 담당 팻말/비교 과제 연결
+  const OWNER={
+    'entry-post':'P1','entry-backing':'P1',
+    'valve-body':'P2','valve-pipe':'P2',
+    'cabinet':'P3',
+    'roof-service':'P4',
+    'rear-pipe':'P5',
+    'annex-pump':'P6',
+    'o1-a':'O1','o1-b':'O1','o1-post-a':'O1','o1-post-b':'O1',
+    'o2-a':'O2','o2-b':'O2','o2-post-a':'O2','o2-post-b':'O2'
+  };
+  const signGroupId=id=>id.startsWith('O1')?'O1':id.startsWith('O2')?'O2':id;
+  const isThin=p=>{const s=[...p.size].sort((a,b)=>b-a);return s[1]<0.5;}; // 난간·기둥·보 등
+
+  function makeHit(id,t,camera){
+    const comp=model.comparisons.find(c=>c.id===id);
+    if(comp)return {t,id,point:comp.position,normal:[0,.2,1],radius:2,label:id,group:'comparison'};
+    const s=model.signs.find(x=>x.id===id);
+    if(!s)return null;
+    const yaw=s.yaw||0;
+    return {t,id:s.id,point:s.position,normal:[Math.sin(yaw),.2,Math.cos(yaw)],radius:Math.max(...s.size)*.8,label:s.id+' '+(s.text||[]).join(' '),group:s.group};
+  }
+
   function pick(e){
-    const ray=pointerRay(e),camera=controls.camera();let best=null;
-    // P1~P6, O1~O2 등 팻말 피킹
+    const ray=pointerRay(e),camera=controls.camera();
+    let best=null;                       // 가장 가까운 '가리는 물체'(부품 또는 팻말)
+    const consider=(t,kind,ref)=>{if(t<Infinity&&(!best||t<best.t))best={t,kind,ref};};
+
     for(const s of signs){
-      const radius=Math.max(s.size[0],s.size[1],1.2)*0.8;
-      const t=raySphere(ray,s.position,radius);
-      if(t<Infinity&&(!best||t<best.t)){
-        let normal=[Math.sin(s.yaw||0),0.2,Math.cos(s.yaw||0)];
-        best={t,point:s.position,normal,radius:Math.max(radius,.8),label:s.id+' '+(s.text||[]).join(' '),group:s.group,id:s.id};
-      }
+      if(hidden.has(s.id))continue;
+      consider(raySign(ray,s),'sign',s);
     }
-    // 박스 부품 피킹
     for(const p of parts){
-      if(p.id==='ground')continue;
-      const radius=Math.hypot(...p.size)*0.6;
-      const t=raySphere(ray,p.position,radius);
-      if(t<Infinity&&(!best||t<best.t)){
-        best={t,point:p.position,normal:norm(sub(camera.eye,p.position)),radius:Math.max(radius,.5),label:p.id,group:p.group,id:p.id};
-      }
+      if(p.id==='ground'||hidden.has(p.id)||hidden.has(p.group))continue;
+      if(isThin(p)&&!OWNER[p.id])continue;     // 가는 구조물은 클릭을 가리지 않게 건너뜀
+      consider(rayBox(ray,p),'box',p);
     }
-    return best;
+    if(!best)return null;
+
+    if(best.kind==='sign')return makeHit(signGroupId(best.ref.id),best.t,camera);
+    const p=best.ref;
+    if(OWNER[p.id])return makeHit(OWNER[p.id],best.t,camera);
+
+    // 일반 구조물을 눌렀다면 클릭 지점 근처(3m 이내)의 가장 가까운 팻말로 이동
+    const hitPoint=add(ray.origin,scale(ray.direction,best.t));
+    let near=null,nd=3;
+    for(const s of signs){
+      const d=Math.hypot(...sub(s.position,hitPoint));
+      if(d<nd){nd=d;near=s;}
+    }
+    return near?makeHit(signGroupId(near.id),best.t,camera):null;
   }
 
   // 3D 공간 클릭 이벤트
   canvas.addEventListener('click', e => {
     if (controls.state.dragged) return;
     const hit = pick(e);
-    if (!hit) return;
+    if (!hit) {
+      const st=document.querySelector('#focus-status');
+      if(st)st.textContent='💡 팻말이 있는 장비나 팻말 자체를 눌러 보세요';
+      return;
+    }
     if (window.InspectionStudent && window.InspectionStudent.moveTo) {
       window.InspectionStudent.moveTo(hit);
     } else if (controls.focus) {
       controls.focus(hit.point, hit.normal, hit.radius);
     }
   });
+
+  /* ===================== 렌더링 ===================== */
 
   function drawMesh(mesh,m,color,text=false){gl.uniformMatrix4fv(U.uModel,false,m);gl.uniformMatrix3fv(U.uNormal,false,M.normalFrom(m));gl.uniform3fv(U.uColor,color);gl.uniform1i(U.uText,text?1:0);gl.bindVertexArray(mesh.vao);gl.drawElements(gl.TRIANGLES,mesh.count,gl.UNSIGNED_SHORT,0);}
   function drawView(camera,viewport=[0,0,canvas.width,canvas.height]){

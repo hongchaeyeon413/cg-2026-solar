@@ -189,19 +189,32 @@
         // P1~P6, V1~V4 및 개별 부품 시점
         const signPart = model.signs.find(s => s.id === id);
         const boxPart = model.boxes.find(b => b.id === id);
-        const part = signPart || boxPart;
+        const nearestSign = !signPart && boxPart
+          ? model.signs
+            .slice()
+            .sort((a, b) => {
+              const da = Math.hypot(a.position[0] - boxPart.position[0], a.position[1] - boxPart.position[1], a.position[2] - boxPart.position[2]);
+              const db = Math.hypot(b.position[0] - boxPart.position[0], b.position[1] - boxPart.position[1], b.position[2] - boxPart.position[2]);
+              return da - db;
+            })[0]
+          : null;
+        const focusSign = signPart || nearestSign;
+        const part = focusSign || boxPart;
+        const focusId = focusSign ? focusSign.id : id;
 
-        const pos = hit.point || (part ? part.position : [0, 1.5, 0]);
+        const pos = focusSign ? focusSign.position : (hit.point || (part ? part.position : [0, 1.5, 0]));
         let normal = hit.normal || [0, 0.2, 1];
 
-        if (signPart && signPart.yaw !== undefined) {
-          normal = [Math.sin(signPart.yaw), 0.2, Math.cos(signPart.yaw)];
+        if (focusSign && focusSign.yaw !== undefined) {
+          normal = [Math.sin(focusSign.yaw), 0.2, Math.cos(focusSign.yaw)];
         }
 
-        const radius = hit.radius || (part && part.size ? Math.max(...part.size) * 0.8 : 0.8);
+        const radius = focusSign && focusSign.size
+          ? Math.max(...focusSign.size) * 0.8
+          : (hit.radius || (part && part.size ? Math.max(...part.size) * 0.8 : 0.8));
 
         // 건물 내부 장비 시스루 가림 처리
-        if (id.includes('V') || (part && part.group === 'equipment') || pos[1] < 1.2) {
+        if (id.includes('V') || (boxPart && boxPart.group === 'equipment') || pos[1] < 1.2) {
           hidden.add('roof');
           hidden.add('structure');
           updateHideToggleLabel();
