@@ -123,6 +123,7 @@ void main() {
 
   vec3 N = normalize(vNormal);                    // 표면이 향하는 방향
   // vec3 L = normalize(uLightPos - vWorldPos);      // 포인트, 광원 쪽 방향
+  
   // directional — 방향 하나로 고정
   vec3 L = normalize(vec3(0.4, 0.8, 0.5));
   vec3 V = normalize(uViewPos  - vWorldPos);      // 눈 쪽 방향
