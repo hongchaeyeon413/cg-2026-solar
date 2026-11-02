@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5주차 실습 2 — 일몰</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #05070c; }
+  canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
+  #hud { position: fixed; left: 12px; top: 12px; margin: 0; padding: 10px 13px;
+         border: 1px solid rgba(255,255,255,.18); border-radius: 6px;
+         background: rgba(10,10,20,.62); color: #f1e4d4;
+         font: 12px/1.75 ui-monospace, Menlo, Consolas, monospace; }
+  #hud b { color: #ffb36b; }
+  #hud .off { opacity: .35; text-decoration: line-through; }
+</style>
+</head>
+<body>
+<canvas id="glcanvas"></canvas>
+<div id="hud"></div>
+
+<script>
+'use strict';
+
+/* ── 메시 ─────────────────────────────────────────────────────────────── */
+function makeSphere(seg) {
+  const positions = [], normals = [], indices = [];
+  for (let i = 0; i <= seg; i++) {
+    const phi = Math.PI * i / seg;
+    for (let j = 0; j <= seg * 2; j++) {
+      const th = 2 * Math.PI * j / (seg * 2);
+      const x = Math.sin(phi) * Math.cos(th), y = Math.cos(phi), z = Math.sin(phi) * Math.sin(th);
+      positions.push(x, y, z); normals.push(x, y, z);
+    }
+  }
+  const W = seg * 2 + 1;
+  for (let i = 0; i < seg; i++)
+    for (let j = 0; j < seg * 2; j++) {
+      const a = i * W + j, b = a + W;
+      indices.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  return { positions: new Float32Array(positions), normals: new Float32Array(normals),
+           indices: new Uint16Array(indices) };
+}
+function makePlane(size) {
+  const s = size / 2;
+  return { positions: new Float32Array([-s,0,-s, s,0,-s, s,0,s, -s,0,s]),
+           normals:   new Float32Array([0,1,0, 0,1,0, 0,1,0, 0,1,0]),
+           indices:   new Uint16Array([0,1,2, 0,2,3]) };
+}
+
+/* ── 버텍스 셰이더 ─────────────────────────────────────────────────────── */
+const VS_SOURCE = `#version 300 es
+layout(location=0) in vec3 aPos;
+layout(location=1) in vec3 aNormal;
+uniform mat4 uModel, uView, uProj;
+uniform mat3 uNormalMat;
+out vec3 vWorldPos, vNormal;
+void main() {
+  vec4 world = uModel * vec4(aPos, 1.0);
+  vWorldPos  = world.xyz;
+  vNormal    = uNormalMat * aNormal;
+  gl_Position = uProj * uView * world;
+}
+`;
+
+/* ── 프래그먼트 셰이더 ─────────────────────────────────────────────────── */
+const FS_SOURCE = `#version 300 es
+precision highp float;
+
+in vec3 vWorldPos, vNormal;
+
+uniform vec3  uBaseColor;
+uniform float uShininess, uKs, uKa;
+uniform bool  uEmissive;
+uniform bool  uSky;                       // true 면 하늘 돔을 그린다
+uniform vec3  uViewPos;
+
+uniform vec3  uSunPos, uSunColor;         // ① point — 해
+uniform float uSunK1, uSunK2;
+uniform vec3  uSkyDir, uSkyColor;         // ② directional — 하늘빛
+uniform bool  uOn1, uOn2;
+
+out vec4 fragColor;
+
+// 광원 하나가 만드는 밝기 = diffuse + specular
+vec3 shade(vec3 N, vec3 V, vec3 L, vec3 lightColor, float att) {
+  float lambert = max(dot(N, L), 0.0);
+  if (lambert <= 0.0) return vec3(0.0);        // 등진 면은 specular 도 0
+
+  vec3 result = uBaseColor * lambert;
+  vec3 R = reflect(-L, N);
+  result += uKs * pow(max(dot(R, V), 0.0), uShininess);
+  return result * lightColor * att;
+}
+
+void main() {
+  // ── 하늘 돔: 높이에 따라 주황 → 보라 → 남색
+  if (uSky) {
+    vec3 dir = normalize(vWorldPos);
+    float h = clamp(dir.y, 0.0, 1.0);
+    vec3 horizon = vec3(1.00, 0.42, 0.16);
+    vec3 mid     = vec3(0.30, 0.16, 0.38);
+    vec3 zenith  = vec3(0.02, 0.05, 0.16);
+    vec3 sky = mix(horizon, mid, smoothstep(0.0, 0.22, h));
+    sky = mix(sky, zenith, smoothstep(0.18, 0.75, h));
+
+    float glow = pow(max(dot(dir, normalize(uSunPos)), 0.0), 16.0);
+    if (uOn1) sky += vec3(1.0, 0.45, 0.12) * glow * 0.7;   // 해 주변의 번짐
+    else      sky *= 0.35;                                  // 해를 끄면 하늘도 어두워진다
+
+    sky = mix(vec3(0.02, 0.015, 0.02), sky, smoothstep(-0.1, 0.0, dir.y));
+    fragColor = vec4(sky, 1.0);
+    return;
+  }
+
+  if (uEmissive) { fragColor = vec4(uBaseColor, 1.0); return; }
+
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(uViewPos - vWorldPos);
+
+  vec3 color = uKa * uBaseColor;               // ambient 는 한 번만
+
+  if (uOn1) {                                  // ① point — 지는 해
+    vec3  d    = uSunPos - vWorldPos;
+    float dist = length(d);
+    float att  = 1.0 / (1.0 + uSunK1 * dist + uSunK2 * dist * dist);
+    color += shade(N, V, d / dist, uSunColor, att);
+  }
+  if (uOn2) {                                  // ② directional — 하늘에서 오는 빛
+    color += shade(N, V, normalize(-uSkyDir), uSkyColor, 1.0);
+  }
+
+  color = color / (color + 1.0);                       // 톤 매핑
+  fragColor = vec4(pow(color, vec3(1.0 / 2.2)), 1.0);  // 감마 보정
+}
+`;
+
+/* ── 4×4 행렬 ─────────────────────────────────────────────────────────── */
+const Mat4 = {
+  identity: function () { return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]); },
+  multiply: function (a, b) {
+    const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
+      let s = 0; for (let k = 0; k < 4; k++) s += a[k*4+r] * b[c*4+k];
+      o[c*4+r] = s;
+    }
+    return o;
+  },
+  translate: function (x,y,z) { const m = Mat4.identity(); m[12]=x; m[13]=y; m[14]=z; return m; },
+  scale: function (x,y,z) { const m = Mat4.identity(); m[0]=x; m[5]=y; m[10]=z; return m; },
+  rotateY: function (r) {
+    const m = Mat4.identity(), c = Math.cos(r), s = Math.sin(r);
+    m[0]=c; m[2]=-s; m[8]=s; m[10]=c; return m;
+  },
+  perspective: function (fovy, aspect, near, far) {
+    const f = 1 / Math.tan(fovy/2), nf = 1 / (near - far);
+    return new Float32Array([f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)*nf,-1, 0,0,2*far*near*nf,0]);
+  },
+  lookAt: function (eye, center, up) {
+    let zx=eye[0]-center[0], zy=eye[1]-center[1], zz=eye[2]-center[2];
+    const zl=Math.hypot(zx,zy,zz)||1; zx/=zl; zy/=zl; zz/=zl;
+    let xx=up[1]*zz-up[2]*zy, xy=up[2]*zx-up[0]*zz, xz=up[0]*zy-up[1]*zx;
+    const xl=Math.hypot(xx,xy,xz)||1; xx/=xl; xy/=xl; xz/=xl;
+    const yx=zy*xz-zz*xy, yy=zz*xx-zx*xz, yz=zx*xy-zy*xx;
+    return new Float32Array([xx,yx,zx,0, xy,yy,zy,0, xz,yz,zz,0,
+      -(xx*eye[0]+xy*eye[1]+xz*eye[2]), -(yx*eye[0]+yy*eye[1]+yz*eye[2]),
+      -(zx*eye[0]+zy*eye[1]+zz*eye[2]), 1]);
+  },
+  normalFromMat4: function (m) {
+    const a00=m[0],a01=m[1],a02=m[2],a10=m[4],a11=m[5],a12=m[6],a20=m[8],a21=m[9],a22=m[10];
+    const b01=a22*a11-a12*a21, b11=-a22*a10+a12*a20, b21=a21*a10-a11*a20;
+    let det=a00*b01+a01*b11+a02*b21;
+    if (!det) return new Float32Array([1,0,0, 0,1,0, 0,0,1]);
+    det = 1/det;
+    return new Float32Array([
+      b01*det, (-a22*a01+a02*a21)*det, ( a12*a01-a02*a11)*det,
+      b11*det, ( a22*a00-a02*a20)*det, (-a12*a00+a02*a10)*det,
+      b21*det, (-a21*a00+a01*a20)*det, ( a11*a00-a01*a10)*det]);
+  },
+};
+
+/* ── WebGL 준비 ───────────────────────────────────────────────────────── */
+const canvas = document.getElementById('glcanvas');
+const gl = canvas.getContext('webgl2');
+if (!gl) {
+  document.body.innerHTML = '<p style="color:#fff;font:16px sans-serif;padding:2rem">' +
+    'WebGL2 를 사용할 수 없습니다. 최신 Chrome 또는 Edge 로 열어 주세요.</p>';
+  throw new Error('no webgl2');
+}
+function compileShader(type, source) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, source); gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+    throw new Error(gl.getShaderInfoLog(s));
+  return s;
+}
+const program = gl.createProgram();
+gl.attachShader(program, compileShader(gl.VERTEX_SHADER, VS_SOURCE));
+gl.attachShader(program, compileShader(gl.FRAGMENT_SHADER, FS_SOURCE));
+gl.linkProgram(program);
+if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+
+const U = {};
+['uModel','uView','uProj','uNormalMat','uBaseColor','uShininess','uKs','uKa',
+ 'uEmissive','uSky','uViewPos',
+ 'uSunPos','uSunColor','uSunK1','uSunK2','uSkyDir','uSkyColor','uOn1','uOn2'].forEach(function (n) {
+  U[n] = gl.getUniformLocation(program, n);
+});
+
+function createMesh(mesh) {
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  function attribute(data, loc, size) {
+    const b = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+  }
+  attribute(mesh.positions, 0, 3);
+  attribute(mesh.normals, 1, 3);
+  const ibo = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.indices, gl.STATIC_DRAW);
+  gl.bindVertexArray(null);
+  return { vao: vao, count: mesh.indices.length };
+}
+const sphere = createMesh(makeSphere(40));
+const plane  = createMesh(makePlane(400));
+gl.enable(gl.DEPTH_TEST);
+
+/* ── 광원 켜기/끄기 ───────────────────────────────────────────────────── */
+const on = { l1: true, l2: true };
+window.addEventListener('keydown', function (e) {
+  if (e.key === '1') on.l1 = !on.l1;
+  if (e.key === '2') on.l2 = !on.l2;
+  paintHud();
+});
+const hud = document.getElementById('hud');
+function paintHud() {
+  function row(k, key, text) {
+    return '<div class="' + (on[k] ? '' : 'off') + '"><b>' + key + '</b> ' + text + '</div>';
+  }
+  hud.innerHTML =
+    '<div style="margin-bottom:6px"><b>일몰</b> — 숫자 키로 광원을 껐다 켜 보세요</div>' +
+    row('l1', '1', 'point &nbsp;&nbsp;&nbsp;&nbsp; 지는 해 (주황 · 거리 감쇠)') +
+    row('l2', '2', 'directional 하늘빛 (약한 파랑 · 감쇠 없음)') +
+    '<div style="margin-top:6px;opacity:.6">드래그 = 시점 회전 · 휠 = 확대/축소</div>';
+}
+paintHud();
+
+/* ── 카메라 ───────────────────────────────────────────────────────────── */
+const cam = { yaw: 0.6, pitch: 0.12, dist: 12 };
+let dragging = false, lastX = 0, lastY = 0;
+canvas.addEventListener('pointerdown', function (e) {
+  dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', function (e) {
+  if (!dragging) return;
+  cam.yaw += (e.clientX - lastX) * 0.008;
+  cam.pitch = Math.max(-0.05, Math.min(1.2, cam.pitch + (e.clientY - lastY) * 0.005));
+  lastX = e.clientX; lastY = e.clientY;
+});
+canvas.addEventListener('pointerup', function (e) {
+  dragging = false; canvas.releasePointerCapture(e.pointerId);
+});
+canvas.addEventListener('wheel', function (e) {
+  e.preventDefault();
+  cam.dist = Math.max(4, Math.min(40, cam.dist * (1 + e.deltaY * 0.001)));
+}, { passive: false });
+
+/* ── 장면: 모든 물체는 동그란 공 (반지름 r 하나로만 크기 조절) ─────────
+   공마다 다른 것은 물체색(color), 광택의 폭(shin = uShininess),
+   광택의 세기(ks) 세 가지뿐이다. 이름은 이 값들이 만드는 인상을 적은 것이다. */
+const GROUND     = { color: [0.22, 0.17, 0.14], shin: 28,  ks: 0.18 };                                  // 바닥 — 해 쪽으로 번들거림
+const MATTE      = { at: [-2.6, 1.0, 0.4],  r: 1.0,  color: [0.70, 0.38, 0.26], shin: 4,   ks: 0.02 };  // 무광 — 하이라이트가 거의 없음
+const SHINY      = { at: [0.6, 0.8, -0.6],  r: 0.8,  color: [0.25, 0.45, 0.60], shin: 200, ks: 1.0 };   // 광택 — 작고 날카로운 하이라이트
+const SEMI_MATTE = { at: [3.0, 0.6, -1.2],  r: 0.6,  color: [0.30, 0.27, 0.27], shin: 14,  ks: 0.10 };  // 약한 광택 — 흐릿한 하이라이트
+const DARK_MATTE = { at: [-0.4, 0.45, 2.0], r: 0.45, color: [0.22, 0.20, 0.20], shin: 6,   ks: 0.03 };  // 어두운 무광
+
+const startTime = performance.now();
+function draw(mesh, model, color, shin, ks, emissive) {
+  gl.uniformMatrix4fv(U.uModel, false, model);
+  gl.uniformMatrix3fv(U.uNormalMat, false, Mat4.normalFromMat4(model));
+  gl.uniform3fv(U.uBaseColor, color);
+  gl.uniform1f(U.uShininess, shin);
+  gl.uniform1f(U.uKs, ks);
+  gl.uniform1i(U.uEmissive, emissive ? 1 : 0);
+  gl.bindVertexArray(mesh.vao);
+  gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_SHORT, 0);
+}
+function mixColor(a, b, t) {
+  return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t, a[2] + (b[2]-a[2])*t];
+}
+
+// 공 하나를 그린다: 위치 + 반지름 (x, y, z 를 같은 값으로 키운다)
+function drawBall(obj, t, spin) {
+  let m = Mat4.translate(obj.at[0], obj.at[1], obj.at[2]);
+  if (spin) m = Mat4.multiply(m, Mat4.rotateY(t * spin));
+  m = Mat4.multiply(m, Mat4.scale(obj.r, obj.r, obj.r));
+  draw(sphere, m, obj.color, obj.shin, obj.ks, false);
+}
+
+function render() {
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.floor(canvas.clientWidth * dpr), h = Math.floor(canvas.clientHeight * dpr);
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(0.02, 0.015, 0.03, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  const t = (performance.now() - startTime) / 1000;
+
+  const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const eye = [Math.sin(cam.yaw)*cp*cam.dist, sp*cam.dist + 1.2, Math.cos(cam.yaw)*cp*cam.dist];
+  const view = Mat4.lookAt(eye, [0, 1.1, 0], [0, 1, 0]);
+  const proj = Mat4.perspective(Math.PI/4, canvas.width/canvas.height, 0.1, 3000);
+
+  // 해는 지평선 가까이에서 천천히 오르내린다. 낮을수록 더 붉어진다.
+  const sunY   = 3.0 + 2.2 * Math.sin(t * 0.12);              // 0.8 ~ 5.2
+  const sunPos = [-38.0, sunY, -26.0];
+  const warm   = Math.min(1, Math.max(0, (sunY - 0.8) / 4.4)); // 0 = 아주 붉음, 1 = 덜 붉음
+  const sunColor = mixColor([6.5, 1.3, 0.35], [5.5, 2.6, 1.0], warm);
+
+  gl.useProgram(program);
+  gl.uniformMatrix4fv(U.uView, false, view);
+  gl.uniformMatrix4fv(U.uProj, false, proj);
+  gl.uniform3fv(U.uViewPos, eye);
+  gl.uniform1f(U.uKa, 0.03);
+
+  // ① point — 지는 해 (따뜻한 주황, 거리 감쇠)
+  gl.uniform3fv(U.uSunPos, sunPos);
+  gl.uniform3fv(U.uSunColor, sunColor);
+  gl.uniform1f(U.uSunK1, 0.0);
+  gl.uniform1f(U.uSunK2, 0.0006);
+
+  // ② directional — 하늘 위쪽에서 오는 약한 파란빛 (감쇠 없음)
+  gl.uniform3f(U.uSkyDir, -0.2, -0.9, -0.35);
+  gl.uniform3f(U.uSkyColor, 0.22, 0.36, 0.80);
+
+  gl.uniform1i(U.uOn1, on.l1 ? 1 : 0);
+  gl.uniform1i(U.uOn2, on.l2 ? 1 : 0);
+
+  // 하늘 돔 (가장 먼저)
+  gl.uniform1i(U.uSky, 1);
+  draw(sphere, Mat4.scale(800, 800, 800), [0, 0, 0], 1, 0, false);
+  gl.uniform1i(U.uSky, 0);
+
+  // 바닥
+  draw(plane, Mat4.identity(), GROUND.color, GROUND.shin, GROUND.ks, false);
+
+  // 공 네 개 (모두 균등 스케일)
+  drawBall(MATTE,      t, 0.1);   // 무광 공 — 천천히 자전
+  drawBall(SHINY,      t, 0);     // 광택 공
+  drawBall(SEMI_MATTE, t, 0);     // 약한 광택 공
+  drawBall(DARK_MATTE, t, 0);     // 어두운 무광 공
+
+  // 해 — 자체발광 구 (해 광원을 끄면 같이 사라진다)
+  if (on.l1) draw(sphere, Mat4.multiply(Mat4.translate(sunPos[0], sunPos[1], sunPos[2]),
+                   Mat4.scale(2.6, 2.6, 2.6)), mixColor([1.0, 0.30, 0.08], [1.0, 0.65, 0.22], warm),
+                   1, 0, true);
+
+  gl.bindVertexArray(null);
+  requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
