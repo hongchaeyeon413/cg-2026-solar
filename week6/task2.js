@@ -31,6 +31,7 @@ uniform sampler2D uColor,uNormal,uARM,uEnv;
 uniform vec3 uEye,uLight;
 uniform float uRough,uMetal,uNormalStrength,uPower,uAmbient,uEnvPower,uTime;
 uniform float uIceAmount,uIceThreshold,uIceStrength;
+uniform float uCraterAmount,uCraterSize,uCraterStrength;
 uniform int uDebugMode;
 
 vec3 srgbToLinear(vec3 c){
@@ -70,6 +71,30 @@ float iceMask(vec3 S){
  float signal=clamp(latitude*.72+pattern*.48,0.0,1.0);
  return smoothstep(uIceThreshold-.12,uIceThreshold+.12,signal)*uIceAmount;
 }
+float craterDistance(vec3 S){
+ float scale=mix(8.0,3.0,uCraterSize);
+ vec3 p=S*scale;
+ vec3 cell=floor(p),f=fract(p);
+ float best=9.0;
+ for(int x=-1;x<=1;x++) for(int y=-1;y<=1;y++) for(int z=-1;z<=1;z++){
+  vec3 g=vec3(float(x),float(y),float(z));
+  vec3 id=cell+g;
+  float accepted=step(hash31(id+41.7),uCraterAmount);
+  vec3 offset=vec3(hash31(id),hash31(id+7.3),hash31(id+13.7));
+  float size=(.36+.52*hash31(id+21.1))*mix(.72,1.35,uCraterSize);
+  best=min(best,mix(9.0,length(g+offset-f)/size,accepted));
+ }
+ return best;
+}
+float craterMask(vec3 S){
+ return 1.0-smoothstep(.10,.58,craterDistance(S));
+}
+float craterHeight(vec3 S){
+ float d=craterDistance(S);
+ float pit=1.0-smoothstep(.08,.34,d);
+ float rim=smoothstep(.28,.50,d)*(1.0-smoothstep(.10,.28,d));
+ return -.70*pit+.18*rim;
+}
 vec3 nereidBase(vec3 S){
  float lat=S.y;
  float warp=fbm(S*vec3(3,8,3)+vec3(uTime*.03,0,0));
@@ -106,18 +131,30 @@ void main(){
  vec3 textureBase=srgbToLinear(texture(uColor,vUV).rgb);
  vec3 base=nereidBase(S)*textureBase;
  float ice=iceMask(S);
+ float crater=craterMask(S);
  if(uDebugMode==1){
   outColor=vec4(vec3(ice),1.0);
+  return;
+ }
+ if(uDebugMode==2){
+  outColor=vec4(vec3(crater),1.0);
   return;
  }
  vec3 iceColor=vec3(.62,.84,.98);
  float iceEffect=ice*uIceStrength;
  base=mix(base,mix(iceColor,vec3(.90,.97,1.0),ice),iceEffect);
+ float craterEffect=crater*uCraterStrength;
+ float craterPit=1.0-smoothstep(.08,.34,craterDistance(S));
+ float craterRim=smoothstep(.28,.50,craterDistance(S))*(1.0-smoothstep(.10,.28,craterDistance(S)));
+ base=mix(base,base*vec3(.42,.48,.68),craterPit*craterEffect);
+ base=mix(base,base+vec3(.12,.10,.08),craterRim*craterEffect);
  vec3 arm=texture(uARM,vUV).rgb;
  float ao=arm.r;
  float rough=max(arm.g*uRough,.045);
  float metal=arm.b*uMetal;
  rough=mix(rough,.46,iceEffect);
+ rough=mix(rough,.86,craterPit*craterEffect);
+ rough=mix(rough,.62,craterRim*craterEffect);
  if(uNormalStrength>0.0){
   vec3 dp1=dFdx(vWorldPos),dp2=dFdy(vWorldPos);
   vec2 du1=dFdx(vUV),du2=dFdy(vUV);
@@ -133,6 +170,14 @@ void main(){
    noise3(S*46.0+vec3(37.0,5.0,11.0))
   )*2.0-1.0;
   mapN.xy+=iceBump*(.08+.12*crack)*iceEffect;
+  float eps=.0025;
+  vec3 ref=abs(S.y)<.9?vec3(0,1,0):vec3(1,0,0);
+  vec3 localT=normalize(cross(ref,S));
+  vec3 localB=normalize(cross(S,localT));
+  float h0=craterHeight(S);
+  float hx=craterHeight(normalize(S+localT*eps));
+  float hy=craterHeight(normalize(S+localB*eps));
+  mapN.xy+=vec2(h0-hx,h0-hy)*.55*craterEffect;
   N=normalize(mat3(T*inv,B*inv,N)*normalize(mapN));
  }
  vec3 color=directPBR(N,V,L,base,rough,metal);
@@ -151,7 +196,8 @@ void main(){
 const prog=D.program(gl,VS,FS),U=D.uniforms(gl,prog,[
  'uVP','uModel','uNormalMat','uEye','uLight','uRough','uMetal',
  'uNormalStrength','uPower','uAmbient','uEnvPower','uTime',
- 'uIceAmount','uIceThreshold','uIceStrength','uDebugMode',
+ 'uIceAmount','uIceThreshold','uIceStrength',
+ 'uCraterAmount','uCraterSize','uCraterStrength','uDebugMode',
  'uColor','uNormal','uARM','uEnv'
 ]);
 const mesh=D.upload(gl,D.revolution(D.profiles.sphere(.95,64),96));
@@ -199,7 +245,12 @@ const S=D.UI('#ui',[
  {id:'iceThreshold',label:'얼음 경계',min:0,max:1,step:.01,value:.62},
  {id:'iceStrength',label:'얼음 강도',min:0,max:1,step:.01,value:.72},
  {id:'iceDebug',type:'select',label:'얼음 마스크',value:'final',options:[
-  {value:'final',label:'일반 모드'},{value:'mask',label:'마스크 모드'}]}
+  {value:'final',label:'일반 모드'},{value:'mask',label:'얼음 마스크'}]},
+ {id:'craterAmount',label:'크레이터 개수',min:0,max:1,step:.01,value:.45},
+ {id:'craterSize',label:'크레이터 크기',min:0,max:1,step:.01,value:.5},
+ {id:'craterStrength',label:'크레이터 강도',min:0,max:1,step:.01,value:.75},
+ {id:'craterDebug',type:'select',label:'크레이터 마스크',value:'final',options:[
+  {value:'final',label:'일반 모드'},{value:'mask',label:'크레이터 마스크'}]}
 ]);
 const cam=D.orbit(cv,{dist:3.3,pitch:.12});
 document.querySelector('#reset').onclick=()=>{cam.dist=3.3;cam.yaw=0;cam.pitch=.12;};
@@ -231,7 +282,11 @@ D.loop((time)=>{
  gl.uniform1f(U.uIceAmount,S.iceAmount);
  gl.uniform1f(U.uIceThreshold,S.iceThreshold);
  gl.uniform1f(U.uIceStrength,S.iceStrength);
- gl.uniform1i(U.uDebugMode,S.iceDebug==='mask'?1:0);
+ gl.uniform1f(U.uCraterAmount,S.craterAmount);
+ gl.uniform1f(U.uCraterSize,S.craterSize);
+ gl.uniform1f(U.uCraterStrength,S.craterStrength);
+ gl.uniform1i(U.uDebugMode,
+  S.craterDebug==='mask'?2:(S.iceDebug==='mask'?1:0));
  const textures=[colorTex,normalTex,armTex,env.tex];
  textures.forEach((tex,i)=>{
   gl.activeTexture(gl.TEXTURE0+i); gl.bindTexture(gl.TEXTURE_2D,tex);
