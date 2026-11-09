@@ -3,29 +3,37 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>5주차 실습 2 — 일몰 (낮 → 황혼 → 밤)</title>
+<title>5주차 실습 2 — 태양계</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #05070c; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #02030a; }
   canvas { display: block; width: 100vw; height: 100vh; touch-action: none; }
-  #hud, #clock { position: fixed; margin: 0; padding: 10px 13px;
-         border: 1px solid rgba(255,255,255,.18); border-radius: 6px;
-         background: rgba(10,10,20,.62); color: #f1e4d4;
-         font: 12px/1.75 ui-monospace, Menlo, Consolas, monospace; }
-  #hud { left: 12px; top: 12px; }
-  #clock { right: 12px; top: 12px; font-size: 14px; }
-  #hud b { color: #ffb36b; }
-  #hud .off { opacity: .35; text-decoration: line-through; }
+  .panel { position: fixed; margin: 0; padding: 10px 14px; color: #dbe6f6;
+           background: rgba(6, 10, 20, .68); border: 1px solid rgba(160, 190, 255, .22);
+           border-radius: 8px; font: 12px/1.75 ui-monospace, Menlo, Consolas, monospace; }
+  #hud  { left: 12px; top: 12px; max-width: 400px; }
+  #info { left: 12px; bottom: 12px; max-width: 440px; }
+  .panel b { color: #ffd28a; }
+  .panel .off { opacity: .35; text-decoration: line-through; }
+  #labels { position: fixed; left: 0; top: 0; width: 100%; height: 100%;
+            pointer-events: none; overflow: hidden; }
+  .lab { position: absolute; left: 0; top: 0; white-space: nowrap; color: #cfe0ff;
+         font: 11px ui-monospace, Menlo, Consolas, monospace;
+         text-shadow: 0 0 3px #000, 0 0 7px #000; }
+  .lab.sel { color: #ffd28a; font-weight: bold; }
 </style>
 </head>
 <body>
 <canvas id="glcanvas"></canvas>
-<div id="hud"></div>
-<div id="clock"></div>
-
+<div id="labels"></div>
+<div id="hud" class="panel"></div>
+<div id="info" class="panel"></div>
+ 
 <script>
 'use strict';
-
-/* ── 메시 ─────────────────────────────────────────────────────────────── */
+ 
+/* ══════════════════════════════════════════════════════════════════════════
+   1. 메시 — 구, 고리(납작한 원판), 궤도선(원) 세 가지만 쓴다
+   ══════════════════════════════════════════════════════════════════════════ */
 function makeSphere(seg) {
   const positions = [], normals = [], indices = [];
   for (let i = 0; i <= seg; i++) {
@@ -45,101 +53,374 @@ function makeSphere(seg) {
   return { positions: new Float32Array(positions), normals: new Float32Array(normals),
            indices: new Uint16Array(indices) };
 }
-function makePlane(size) {
-  const s = size / 2;
-  return { positions: new Float32Array([-s,0,-s, s,0,-s, s,0,s, -s,0,s]),
-           normals:   new Float32Array([0,1,0, 0,1,0, 0,1,0, 0,1,0]),
-           indices:   new Uint16Array([0,1,2, 0,2,3]) };
+ 
+// 토성의 고리: 안쪽 반지름 ~ 바깥 반지름의 납작한 원판 (행성 반지름을 1 로 본 크기)
+const RING_IN = 1.30, RING_OUT = 2.40;
+function makeRing(seg) {
+  const positions = [], normals = [], indices = [];
+  for (let j = 0; j <= seg; j++) {
+    const th = 2 * Math.PI * j / seg, c = Math.cos(th), s = Math.sin(th);
+    positions.push(c * RING_IN, 0, s * RING_IN,  c * RING_OUT, 0, s * RING_OUT);
+    normals.push(0, 1, 0,  0, 1, 0);
+  }
+  for (let j = 0; j < seg; j++) {
+    const a = 2 * j, b = a + 1, c = a + 2, d = a + 3;
+    indices.push(a, b, c,  b, d, c);
+  }
+  return { positions: new Float32Array(positions), normals: new Float32Array(normals),
+           indices: new Uint16Array(indices) };
 }
-
-/* ── 버텍스 셰이더 ─────────────────────────────────────────────────────── */
+ 
+// 반지름 1 인 원 (궤도선). 선분으로 그린다.
+function makeCircle(seg) {
+  const positions = [], normals = [], indices = [];
+  for (let j = 0; j < seg; j++) {
+    const th = 2 * Math.PI * j / seg;
+    positions.push(Math.cos(th), 0, Math.sin(th));
+    normals.push(0, 1, 0);
+    indices.push(j);
+  }
+  return { positions: new Float32Array(positions), normals: new Float32Array(normals),
+           indices: new Uint16Array(indices) };
+}
+ 
+/* ══════════════════════════════════════════════════════════════════════════
+   2. 버텍스 셰이더
+      vLocal = 회전·이동 전의 위치. 무늬가 행성 표면에 붙어서 함께 돌도록 쓴다.
+   ══════════════════════════════════════════════════════════════════════════ */
 const VS_SOURCE = `#version 300 es
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNormal;
 uniform mat4 uModel, uView, uProj;
 uniform mat3 uNormalMat;
-out vec3 vWorldPos, vNormal;
+out vec3 vWorldPos;
+out vec3 vNormal;
+out vec3 vLocal;
 void main() {
   vec4 world = uModel * vec4(aPos, 1.0);
   vWorldPos  = world.xyz;
   vNormal    = uNormalMat * aNormal;
+  vLocal     = aPos;
   gl_Position = uProj * uView * world;
 }
 `;
-
-/* ── 프래그먼트 셰이더 ─────────────────────────────────────────────────── */
+ 
+/* ══════════════════════════════════════════════════════════════════════════
+   3. 프래그먼트 셰이더
+      uMode : 0 = 행성/위성   1 = 태양 표면   2 = 태양 코로나(가산 혼합)
+              3 = 토성 고리   4 = 별이 있는 하늘   5 = 궤도선
+      uType : 행성 종류(0 수성 … 7 해왕성, 8 달) — 표면 무늬와 재질을 고른다
+      광원 두 개 : ① point(태양)  ② directional(먼 별빛)
+   ══════════════════════════════════════════════════════════════════════════ */
 const FS_SOURCE = `#version 300 es
 precision highp float;
-
-in vec3 vWorldPos, vNormal;
-
-uniform vec3  uBaseColor;
-uniform float uShininess, uKs, uKa;
-uniform bool  uEmissive;
-uniform bool  uSky;                       // true 면 하늘 돔을 그린다
+ 
+in vec3 vWorldPos;
+in vec3 vNormal;
+in vec3 vLocal;
+ 
+uniform int   uMode;
+uniform int   uType;
 uniform vec3  uViewPos;
-
-uniform vec3  uSunPos, uSunColor;         // ① point — 해
-uniform float uSunK1, uSunK2;
-uniform vec3  uSkyDir, uSkyColor;         // ② directional — 하늘빛
-uniform bool  uOn1, uOn2;
-
-uniform vec3  uDomeHorizon, uDomeMid, uDomeZenith;   // 하늘 돔의 세 색 (시간에 따라 바뀐다)
-uniform float uGlow;                                 // 해 주변 번짐의 세기
-
+uniform float uTime;
+ 
+uniform vec3  uSunPos;        // ① point — 태양
+uniform vec3  uSunColor;
+uniform float uSunAtt;        //    거리 감쇠 계수
+uniform vec3  uStarDir;       // ② directional — 먼 별빛 (빛이 나아가는 방향)
+uniform vec3  uStarColor;
+uniform float uOn1, uOn2, uOn3;   // 켜짐 = 1, 꺼짐 = 0 (3 = 자체발광 효과)
+uniform float uAmb;           // ambient (우주 — 거의 0)
+ 
+uniform vec3  uAtmo;          // 대기가 만드는 가장자리 빛
+uniform vec3  uColor;         // 궤도선 색
+uniform float uAlpha;
+uniform vec3  uPlanetPos;     // 고리가 그림자를 받기 위한 행성의 위치와 반지름
+uniform float uPlanetR;
+ 
 out vec4 fragColor;
-
-// 광원 하나가 만드는 밝기 = diffuse + specular
-vec3 shade(vec3 N, vec3 V, vec3 L, vec3 lightColor, float att) {
-  float lambert = max(dot(N, L), 0.0);
-  if (lambert <= 0.0) return vec3(0.0);        // 등진 면은 specular 도 0
-
-  vec3 result = uBaseColor * lambert;
-  vec3 R = reflect(-L, N);
-  result += uKs * pow(max(dot(R, V), 0.0), uShininess);
-  return result * lightColor * att;
+ 
+/* ── 잡음 도구 (3주차에서 쓴 것) ─────────────────────────────────────── */
+float hash31(vec3 p) {
+  p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+  p += dot(p, p.yzx + 33.33);
+  return fract((p.x + p.y) * p.z);
 }
-
+float noise3(vec3 p) {
+  vec3 i = floor(p);
+  vec3 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float x00 = mix(hash31(i),                   hash31(i + vec3(1.0, 0.0, 0.0)), f.x);
+  float x10 = mix(hash31(i + vec3(0.0, 1.0, 0.0)), hash31(i + vec3(1.0, 1.0, 0.0)), f.x);
+  float x01 = mix(hash31(i + vec3(0.0, 0.0, 1.0)), hash31(i + vec3(1.0, 0.0, 1.0)), f.x);
+  float x11 = mix(hash31(i + vec3(0.0, 1.0, 1.0)), hash31(i + vec3(1.0, 1.0, 1.0)), f.x);
+  return mix(mix(x00, x10, f.y), mix(x01, x11, f.y), f.z);
+}
+float fbm(vec3 p) {
+  float value = 0.0;
+  float amplitude = 0.5;
+  for (int i = 0; i < 5; i++) {
+    value += amplitude * noise3(p);
+    p = p * 2.0 + vec3(17.0, 31.0, 47.0);
+    amplitude *= 0.5;
+  }
+  return value;
+}
+ 
+// 크레이터: 가장 가까운 "구덩이 중심"까지의 (크기로 나눈) 거리. 작을수록 구덩이 안쪽.
+float craterDist(vec3 p) {
+  vec3 cell = floor(p);
+  vec3 f = fract(p);
+  float best = 9.0;
+  for (int x = -1; x <= 1; x++) {
+    for (int y = -1; y <= 1; y++) {
+      for (int z = -1; z <= 1; z++) {
+        vec3 g = vec3(float(x), float(y), float(z));
+        vec3 o = vec3(hash31(cell + g), hash31(cell + g + 7.3), hash31(cell + g + 13.7));
+        float size = 0.55 + 0.9 * hash31(cell + g + 21.1);
+        best = min(best, length(g + o - f) / size);
+      }
+    }
+  }
+  return best;
+}
+ 
+// 노출 보정 + 감마 보정: 값이 1 을 넘어도 하얗게 타지 않게 눌러 준다
+vec3 finish(vec3 c) {
+  return pow(1.0 - exp(-c * 1.1), vec3(1.0 / 2.2));
+}
+ 
+/* ── 행성 표면: 물체색(alb) · 광택의 폭(shin) · 광택의 세기(ks) · 스스로 내는 빛(glow) ── */
+void surface(int type, vec3 S, out vec3 alb, out float shin, out float ks, out vec3 glow) {
+  glow = vec3(0.0);
+  alb  = vec3(0.5);
+  shin = 10.0;
+  ks   = 0.05;
+  float lat = S.y;                                       // 북극 +1, 적도 0, 남극 -1
+ 
+  if (type == 0) {                                       // 수성 — 크레이터투성이 암석
+    float n  = fbm(S * 5.0);
+    float cr = craterDist(S * 6.0);
+    float pit = 1.0 - smoothstep(0.15, 0.34, cr);
+    float rim = smoothstep(0.30, 0.38, cr) * (1.0 - smoothstep(0.38, 0.50, cr));
+    alb = mix(vec3(0.54, 0.50, 0.46), vec3(0.30, 0.28, 0.27), n);
+    alb = alb * (1.0 - 0.5 * pit) + 0.09 * rim;
+    shin = 6.0; ks = 0.03;
+ 
+  } else if (type == 1) {                                // 금성 — 두꺼운 황백색 구름
+    float warp = fbm(S * vec3(3.0, 7.0, 3.0) + vec3(uTime * 0.02, 0.0, 0.0));
+    float band = 0.5 + 0.5 * sin(lat * 8.0 + warp * 5.0);
+    alb = mix(vec3(0.80, 0.58, 0.28), vec3(0.96, 0.85, 0.60), band);
+    shin = 18.0; ks = 0.06;
+ 
+  } else if (type == 2) {                                // 지구 — 바다·육지·구름·극관·도시 불빛
+    float h    = fbm(S * 2.6 + vec3(3.1, 1.2, 7.4));
+    float land = smoothstep(0.50, 0.53, h);
+    float polar = smoothstep(0.82, 0.92, abs(lat) + 0.06 * fbm(S * 6.0));
+    float dry  = fbm(S * 4.0 + vec3(9.0));
+    vec3 ocean = mix(vec3(0.02, 0.10, 0.34), vec3(0.04, 0.24, 0.55), smoothstep(0.30, 0.50, h));
+    vec3 landColor = mix(vec3(0.16, 0.36, 0.12), vec3(0.52, 0.42, 0.24), smoothstep(0.45, 0.70, dry));
+    alb = mix(ocean, landColor, land);
+    alb = mix(alb, vec3(0.92, 0.95, 1.00), polar);
+    float solid = max(land, polar);                      // 땅·얼음 = 1, 바다 = 0
+    shin = mix(120.0, 8.0, solid);                       // 바다는 반짝, 땅은 무광
+    ks   = mix(0.90, 0.05, solid);
+    float cl = fbm(S * vec3(4.0, 7.0, 4.0) + vec3(uTime * 0.03, 0.0, uTime * 0.02));
+    float cloud = smoothstep(0.56, 0.68, cl);
+    alb  = mix(alb, vec3(1.0), cloud * 0.85);
+    shin = mix(shin, 12.0, cloud);
+    ks   = mix(ks, 0.05, cloud);
+    float city = smoothstep(0.62, 0.74, noise3(S * 26.0)) * land * (1.0 - cloud) * (1.0 - polar);
+    glow = vec3(1.0, 0.78, 0.40) * city;                 // 밤 쪽 육지의 불빛
+ 
+  } else if (type == 3) {                                // 화성 — 녹슨 붉은 표면
+    float n = fbm(S * 4.0);
+    float d = fbm(S * 9.0 + vec3(2.0));
+    alb = mix(vec3(0.72, 0.34, 0.17), vec3(0.45, 0.22, 0.12), smoothstep(0.40, 0.65, n));
+    alb = mix(alb, vec3(0.30, 0.15, 0.10), smoothstep(0.62, 0.75, d) * 0.5);
+    alb = mix(alb, vec3(0.95), smoothstep(0.90, 0.96, abs(lat)));
+    shin = 8.0; ks = 0.04;
+ 
+  } else if (type == 4) {                                // 목성 — 줄무늬 가스 + 대적점
+    float warp = fbm(S * vec3(4.0, 12.0, 4.0) + vec3(uTime * 0.03, 0.0, 0.0));
+    float b1 = sin(lat * 20.0 + warp * 3.0);
+    float b2 = sin(lat * 47.0 + warp * 5.0);
+    vec3 cream  = vec3(0.88, 0.80, 0.66);
+    vec3 brown  = vec3(0.58, 0.36, 0.22);
+    vec3 orange = vec3(0.78, 0.50, 0.28);
+    alb = mix(cream, brown, 0.5 + 0.5 * b1);
+    alb = mix(alb, orange, smoothstep(0.30, 0.90, 0.5 + 0.5 * b2) * 0.35);
+    vec3 c    = normalize(vec3(0.75, -0.32, 0.58));      // 대적점의 중심
+    vec3 east = normalize(vec3(c.z, 0.0, -c.x));
+    vec3 north = normalize(cross(c, east));
+    vec3 dlt  = S - c;
+    float dist = length(vec2(dot(dlt, east) * 0.55, dot(dlt, north)));
+    float spot = 1.0 - smoothstep(0.07, 0.15, dist);
+    float rim  = smoothstep(0.07, 0.11, dist) * (1.0 - smoothstep(0.13, 0.20, dist));
+    alb = mix(alb, mix(cream, brown, 0.5), rim * 0.6);
+    alb = mix(alb, vec3(0.74, 0.26, 0.14), spot);
+    shin = 28.0; ks = 0.12;
+ 
+  } else if (type == 5) {                                // 토성 — 연한 금빛 줄무늬
+    float warp = fbm(S * vec3(3.0, 10.0, 3.0) + vec3(uTime * 0.02, 0.0, 0.0));
+    float band = 0.5 + 0.5 * sin(lat * 16.0 + warp * 2.5);
+    alb = mix(vec3(0.80, 0.70, 0.48), vec3(0.93, 0.84, 0.62), band);
+    alb = mix(alb, vec3(0.70, 0.60, 0.42), smoothstep(0.75, 1.0, abs(lat)) * 0.4);
+    shin = 22.0; ks = 0.08;
+ 
+  } else if (type == 6) {                                // 천왕성 — 매끈한 청록색 얼음 거인
+    float warp = fbm(S * vec3(3.0, 6.0, 3.0));
+    float band = 0.5 + 0.5 * sin(lat * 10.0 + warp * 2.0);
+    alb = mix(vec3(0.52, 0.78, 0.83), vec3(0.62, 0.86, 0.89), band * 0.5);
+    alb = mix(alb, vec3(0.78, 0.92, 0.93), smoothstep(0.70, 1.0, lat) * 0.5);
+    shin = 50.0; ks = 0.25;
+ 
+  } else if (type == 7) {                                // 해왕성 — 짙은 파랑, 어두운 점, 하얀 구름
+    float warp = fbm(S * vec3(3.0, 8.0, 3.0) + vec3(uTime * 0.03, 0.0, 0.0));
+    float band = 0.5 + 0.5 * sin(lat * 13.0 + warp * 3.0);
+    alb = mix(vec3(0.12, 0.22, 0.70), vec3(0.20, 0.36, 0.86), band);
+    vec3 c    = normalize(vec3(0.30, -0.35, 0.89));      // 대흑점
+    vec3 east = normalize(vec3(c.z, 0.0, -c.x));
+    vec3 north = normalize(cross(c, east));
+    vec3 dlt  = S - c;
+    float dist = length(vec2(dot(dlt, east) * 0.60, dot(dlt, north)));
+    alb = mix(alb, vec3(0.06, 0.12, 0.42), (1.0 - smoothstep(0.06, 0.14, dist)) * 0.8);
+    float streak = smoothstep(0.64, 0.74, fbm(S * vec3(3.0, 11.0, 3.0) + vec3(uTime * 0.03, 3.0, 0.0)));
+    alb = mix(alb, vec3(0.92, 0.95, 1.00), streak * 0.6);
+    shin = 50.0; ks = 0.25;
+ 
+  } else {                                               // 달 — 회색 암석, 바다, 크레이터
+    float maria = smoothstep(0.52, 0.62, fbm(S * 2.2 + vec3(4.0)));
+    float cr = craterDist(S * 5.0);
+    float pit = 1.0 - smoothstep(0.15, 0.34, cr);
+    float rim = smoothstep(0.30, 0.38, cr) * (1.0 - smoothstep(0.38, 0.50, cr));
+    alb = mix(vec3(0.62, 0.62, 0.60), vec3(0.34, 0.34, 0.35), maria);
+    alb = alb * (1.0 - 0.4 * pit) + 0.08 * rim;
+    shin = 5.0; ks = 0.02;
+  }
+}
+ 
+// 고리 위의 점 P 가 행성의 그림자 속에 있는가 (태양 방향 L 로 광선을 쏴서 행성 구와 만나는지)
+float planetShadow(vec3 P, vec3 L) {
+  vec3  oc = P - uPlanetPos;
+  float b  = dot(oc, L);
+  float c  = dot(oc, oc) - uPlanetR * uPlanetR;
+  float disc = b * b - c;
+  return (disc > 0.0 && b < 0.0) ? 0.10 : 1.0;
+}
+ 
 void main() {
-  // ── 하늘 돔: 높이에 따라 horizon → mid → zenith (세 색은 시간에 따라 JS 에서 바꿔 준다)
-  if (uSky) {
-    vec3 dir = normalize(vWorldPos);
-    float h = clamp(dir.y, 0.0, 1.0);
-    vec3 sky = mix(uDomeHorizon, uDomeMid, smoothstep(0.0, 0.22, h));
-    sky = mix(sky, uDomeZenith, smoothstep(0.18, 0.75, h));
-
-    float glow = pow(max(dot(dir, normalize(uSunPos)), 0.0), 16.0);
-    if (uOn1) sky += vec3(1.0, 0.45, 0.12) * glow * 0.7 * uGlow;   // 해 주변의 번짐
-    else      sky *= 0.35;                                          // 해를 끄면 하늘도 어두워진다
-
-    sky = mix(vec3(0.02, 0.015, 0.02), sky, smoothstep(-0.1, 0.0, dir.y));
-    fragColor = vec4(sky, 1.0);
+  vec3 V = normalize(uViewPos - vWorldPos);
+ 
+  /* ── 하늘: 별과 은하수 ─────────────────────────────────────────────── */
+  if (uMode == 4) {
+    vec3 dir = normalize(vWorldPos - uViewPos);
+    vec3 c = vec3(0.004, 0.005, 0.012);
+    float band = exp(-pow(dot(dir, normalize(vec3(0.35, 0.90, 0.25))) * 3.2, 2.0));
+    c += vec3(0.05, 0.05, 0.075) * band * (0.4 + 0.8 * fbm(dir * 5.0));
+ 
+    vec3 q   = dir * 70.0;
+    vec3 id  = floor(q);
+    vec3 f   = fract(q) - 0.5;
+    float hh = hash31(id);
+    vec3 off = (vec3(hash31(id + 1.7), hash31(id + 3.1), hash31(id + 5.3)) - 0.5) * 0.7;
+    float dd = length(f - off);
+    float star = step(0.965, hh) * (1.0 - smoothstep(0.0, 0.10, dd)) * (0.5 + 1.5 * hash31(id + 9.0));
+    vec3 tint = mix(vec3(0.70, 0.80, 1.00), vec3(1.00, 0.85, 0.70), hash31(id + 4.0));
+    c += tint * star;
+    fragColor = vec4(finish(c), 1.0);
     return;
   }
-
-  if (uEmissive) { fragColor = vec4(uBaseColor, 1.0); return; }
-
+ 
+  /* ── 궤도선 ─────────────────────────────────────────────────────────── */
+  if (uMode == 5) {
+    fragColor = vec4(uColor, uAlpha);
+    return;
+  }
+ 
   vec3 N = normalize(vNormal);
-  vec3 V = normalize(uViewPos - vWorldPos);
-
-  vec3 color = uKa * uBaseColor;               // ambient 는 한 번만
-
-  if (uOn1) {                                  // ① point — 해
-    vec3  d    = uSunPos - vWorldPos;
-    float dist = length(d);
-    float att  = 1.0 / (1.0 + uSunK1 * dist + uSunK2 * dist * dist);
-    color += shade(N, V, d / dist, uSunColor, att);
+ 
+  /* ── 태양 표면: 스스로 빛나므로 조명 계산을 하지 않는다 ──────────────── */
+  if (uMode == 1) {
+    vec3 S = normalize(vLocal);
+    float n  = fbm(S * 5.0  + vec3(uTime * 0.10, uTime * 0.06, 0.0));
+    float n2 = fbm(S * 14.0 - vec3(uTime * 0.15));
+    vec3 c = mix(vec3(0.95, 0.38, 0.06), vec3(1.00, 0.86, 0.45), smoothstep(0.30, 0.75, n));
+    c *= 0.80 + 0.40 * n2;
+    float spots = smoothstep(0.62, 0.72, fbm(S * 3.0 + vec3(7.0)));
+    c = mix(c, vec3(0.35, 0.10, 0.02), spots * 0.55);
+    float limb = pow(max(dot(N, V), 0.0), 0.45);        // 가장자리는 조금 어둡게
+    c *= (0.55 + 0.45 * limb) * 2.4;                    // 수정 12: 광원을 꺼도(1번) 태양 구는 항상 밝다
+    fragColor = vec4(finish(c), 1.0);
+    return;
   }
-  if (uOn2) {                                  // ② directional — 하늘에서 오는 빛
-    color += shade(N, V, normalize(-uSkyDir), uSkyColor, 1.0);
+ 
+  /* ── 태양 코로나: 태양보다 큰 구에 가장자리로 갈수록 옅어지는 빛을 더한다 ── */
+  if (uMode == 2) {
+    float k = pow(max(dot(N, V), 0.0), 3.5);
+    fragColor = vec4(vec3(1.0, 0.55, 0.20) * k * 1.4 * uOn3, 1.0);   // 수정 12: uOn1 제거
+    return;
   }
-
-  color = color / (color + 1.0);                       // 톤 매핑
-  fragColor = vec4(pow(color, vec3(1.0 / 2.2)), 1.0);  // 감마 보정
+ 
+  /* ── 태양과 별빛으로 밝혀지는 쪽: 고리와 행성이 공통으로 쓰는 계산 ───── */
+  vec3  toSun = uSunPos - vWorldPos;
+  float dSun  = length(toSun);
+  vec3  L1    = toSun / dSun;                              // point: 픽셀마다 방향이 다르다
+  float att   = 1.0 / (1.0 + uSunAtt * dSun * dSun);       // 멀수록 어둡다
+  vec3  L2    = normalize(-uStarDir);                      // directional: 모든 픽셀에서 같다
+ 
+  /* ── 토성 고리 ──────────────────────────────────────────────────────── */
+  if (uMode == 3) {
+    float t = (length(vLocal.xz) - ${RING_IN.toFixed(2)}) / (${RING_OUT.toFixed(2)} - ${RING_IN.toFixed(2)});
+    float dens = 0.50 + 0.25 * sin(t * 47.0) + 0.20 * sin(t * 113.0 + 1.0);
+    dens *= smoothstep(0.0, 0.05, t) * (1.0 - smoothstep(0.95, 1.0, t));
+    float gap = 1.0 - smoothstep(0.0, 0.025, abs(t - 0.58));   // 카시니 틈
+    dens *= 1.0 - 0.92 * gap;
+    dens *= mix(1.0, 0.55, smoothstep(0.65, 1.0, t));
+    vec3 col = mix(vec3(0.62, 0.54, 0.42), vec3(0.86, 0.78, 0.62), 0.5 + 0.5 * sin(t * 31.0));
+ 
+    float lamb = abs(dot(N, L1));                           // 고리는 앞뒤 어느 쪽에서도 빛을 받는다
+    vec3 lit = col * (0.03 + lamb * uSunColor * att * uOn1 * planetShadow(vWorldPos, L1));
+    lit += col * max(abs(dot(N, L2)), 0.0) * uStarColor * uOn2;
+    fragColor = vec4(finish(lit), clamp(dens, 0.0, 1.0) * 0.9);
+    return;
+  }
+ 
+  /* ── 행성 / 위성 : Phong 반사 모델 ───────────────────────────────────── */
+  vec3 S = normalize(vLocal);
+  vec3 alb; float shin; float ks; vec3 glow;
+  surface(uType, S, alb, shin, ks, glow);
+ 
+  vec3 lit = alb * uAmb;                                   // ambient — 우주에서는 거의 0
+ 
+  float lamb1 = max(dot(N, L1), 0.0);
+  if (lamb1 > 0.0) {                                       // ① point: 태양
+    vec3  R  = reflect(-L1, N);
+    float sp = pow(max(dot(R, V), 0.0), shin);
+    lit += (alb * lamb1 + ks * sp) * uSunColor * att * uOn1;
+  }
+  float lamb2 = max(dot(N, L2), 0.0);
+  if (lamb2 > 0.0) {                                       // ② directional: 먼 별빛
+    vec3  R  = reflect(-L2, N);
+    float sp = pow(max(dot(R, V), 0.0), shin);
+    lit += (alb * lamb2 + ks * sp) * uStarColor * uOn2;
+  }
+ 
+  // 대기: 가장자리에 옅게 번지는 빛 (태양을 향한 쪽에서만 강하다)
+  float edge = pow(1.0 - max(dot(N, V), 0.0), 3.0);
+  lit += uAtmo * edge * (0.15 + 0.85 * smoothstep(-0.10, 0.40, lamb1)) * uOn1;
+ 
+  // 스스로 내는 빛: 태양이 비추지 않는 쪽(밤)에서만 보인다
+  float night = 1.0 - smoothstep(0.0, 0.12, lamb1);
+  lit += glow * night * 1.6 * uOn3;
+ 
+  fragColor = vec4(finish(lit), 1.0);
 }
 `;
-
-/* ── 4×4 행렬 ─────────────────────────────────────────────────────────── */
+ 
+/* ══════════════════════════════════════════════════════════════════════════
+   4. 4×4 행렬 (열 우선)
+   ══════════════════════════════════════════════════════════════════════════ */
 const Mat4 = {
   identity: function () { return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]); },
   multiply: function (a, b) {
@@ -155,6 +436,10 @@ const Mat4 = {
   rotateY: function (r) {
     const m = Mat4.identity(), c = Math.cos(r), s = Math.sin(r);
     m[0]=c; m[2]=-s; m[8]=s; m[10]=c; return m;
+  },
+  rotateZ: function (r) {
+    const m = Mat4.identity(), c = Math.cos(r), s = Math.sin(r);
+    m[0]=c; m[1]=s; m[4]=-s; m[5]=c; return m;
   },
   perspective: function (fovy, aspect, near, far) {
     const f = 1 / Math.tan(fovy/2), nf = 1 / (near - far);
@@ -182,10 +467,12 @@ const Mat4 = {
       b21*det, (-a21*a00+a01*a20)*det, ( a11*a00-a01*a10)*det]);
   },
 };
-
-/* ── WebGL 준비 ───────────────────────────────────────────────────────── */
+ 
+/* ══════════════════════════════════════════════════════════════════════════
+   5. WebGL 준비
+   ══════════════════════════════════════════════════════════════════════════ */
 const canvas = document.getElementById('glcanvas');
-const gl = canvas.getContext('webgl2');
+const gl = canvas.getContext('webgl2', { alpha: false });
 if (!gl) {
   document.body.innerHTML = '<p style="color:#fff;font:16px sans-serif;padding:2rem">' +
     'WebGL2 를 사용할 수 없습니다. 최신 Chrome 또는 Edge 로 열어 주세요.</p>';
@@ -194,8 +481,10 @@ if (!gl) {
 function compileShader(type, source) {
   const s = gl.createShader(type);
   gl.shaderSource(s, source); gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
-    throw new Error(gl.getShaderInfoLog(s));
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    const kind = (type === gl.VERTEX_SHADER) ? '버텍스' : '프래그먼트';
+    throw new Error(kind + ' 셰이더 오류\n' + gl.getShaderInfoLog(s));
+  }
   return s;
 }
 const program = gl.createProgram();
@@ -203,15 +492,14 @@ gl.attachShader(program, compileShader(gl.VERTEX_SHADER, VS_SOURCE));
 gl.attachShader(program, compileShader(gl.FRAGMENT_SHADER, FS_SOURCE));
 gl.linkProgram(program);
 if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
-
+ 
 const U = {};
-['uModel','uView','uProj','uNormalMat','uBaseColor','uShininess','uKs','uKa',
- 'uEmissive','uSky','uViewPos',
- 'uSunPos','uSunColor','uSunK1','uSunK2','uSkyDir','uSkyColor','uOn1','uOn2',
- 'uDomeHorizon','uDomeMid','uDomeZenith','uGlow'].forEach(function (n) {
+['uModel','uView','uProj','uNormalMat','uMode','uType','uViewPos','uTime',
+ 'uSunPos','uSunColor','uSunAtt','uStarDir','uStarColor','uOn1','uOn2','uOn3','uAmb',
+ 'uAtmo','uColor','uAlpha','uPlanetPos','uPlanetR'].forEach(function (n) {
   U[n] = gl.getUniformLocation(program, n);
 });
-
+ 
 function createMesh(mesh) {
   const vao = gl.createVertexArray();
   gl.bindVertexArray(vao);
@@ -230,50 +518,145 @@ function createMesh(mesh) {
   gl.bindVertexArray(null);
   return { vao: vao, count: mesh.indices.length };
 }
-const sphere = createMesh(makeSphere(40));
-const plane  = createMesh(makePlane(400));
+const sphere = createMesh(makeSphere(64));
+const ring   = createMesh(makeRing(160));
+const orbit  = createMesh(makeCircle(192));
+ 
 gl.enable(gl.DEPTH_TEST);
-
-/* ── 시간 (낮 → 황혼 → 밤 → 새벽 → 낮 …) ─────────────────────────────── */
-const PERIOD      = 60.0;   // 한 바퀴(하루)에 걸리는 초
-const START_PHASE = 2.4;    // 시작 위상(라디안). 늦은 오후에서 시작해 몇 초 안에 일몰이 보인다.
-let simTime = 0, paused = false, lastFrame = performance.now();
-
-/* ── 광원 켜기/끄기, 시간 조작 ────────────────────────────────────────── */
-const on = { l1: true, l2: true };
+gl.enable(gl.BLEND);
+gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+ 
+function setModel(m) {
+  gl.uniformMatrix4fv(U.uModel, false, m);
+  gl.uniformMatrix3fv(U.uNormalMat, false, Mat4.normalFromMat4(m));
+}
+function drawMesh(mesh, primitive) {
+  gl.bindVertexArray(mesh.vao);
+  gl.drawElements(primitive || gl.TRIANGLES, mesh.count, gl.UNSIGNED_SHORT, 0);
+}
+ 
+/* ══════════════════════════════════════════════════════════════════════════
+   6. 천체 자료
+      · 행성의 크기는 "지구 반지름 = E" 를 기준으로 실제 비율(수성 0.38 … 목성 11.2)을 그대로 따른다.
+      · 궤도 반지름은 그대로 쓰면 지구가 보이지 않을 만큼 멀어서 줄여서 놓았다.
+      · 태양은 실제로는 지구의 109배라 화면을 덮어 버린다. 그래서 20배로 줄여 그렸다.
+   ══════════════════════════════════════════════════════════════════════════ */
+const E = 0.6;                       // 지구 반지름 (화면 단위)
+const SUN_R = 12.0;                  // 태양 반지름 (지구의 20배로 줄임)
+ 
+const BODIES = [
+  { name: '수성',   type: 0, ratio: 0.383, a:  23, phase: 0.6, spin:  0.15, tilt: 0.00, atmo: [0.00, 0.00, 0.00],
+    kind: '암석 행성', desc: '크레이터투성이의 회색 암석. 공기가 없어서 하이라이트가 거의 없는 무광입니다.' },
+  { name: '금성',   type: 1, ratio: 0.949, a:  31, phase: 2.3, spin: -0.08, tilt: 0.00, atmo: [0.32, 0.26, 0.14],
+    kind: '암석 행성', desc: '두꺼운 황백색 구름이 소용돌이칩니다. 구름이라 광택은 흐릿하고, 거꾸로(역방향) 자전합니다.' },
+  { name: '지구',   type: 2, ratio: 1.000, a:  40, phase: 4.0, spin:  0.90, tilt: 0.41, atmo: [0.18, 0.33, 0.60],
+    kind: '암석 행성', desc: '바다는 반짝이고(shininess 높음) 땅은 무광입니다. 흰 구름과 극관이 있고, 밤 쪽에는 도시 불빛이 켜집니다.' },
+  { name: '화성',   type: 3, ratio: 0.532, a:  49, phase: 5.6, spin:  0.88, tilt: 0.44, atmo: [0.12, 0.07, 0.05],
+    kind: '암석 행성', desc: '산화철 때문에 붉은 표면. 어두운 반점과 흰 극관이 있고 광택은 거의 없습니다.' },
+  { name: '목성',   type: 4, ratio: 11.21, a:  72, phase: 1.2, spin:  2.20, tilt: 0.05, atmo: [0.10, 0.09, 0.07],
+    kind: '가스 행성', desc: '단단한 표면이 없는 가스 덩어리. 위도마다 다른 줄무늬 대기와 거대한 폭풍(대적점)이 보입니다.' },
+  { name: '토성',   type: 5, ratio: 9.45,  a: 100, phase: 3.1, spin:  2.00, tilt: 0.47, atmo: [0.10, 0.09, 0.06], ring: true,
+    kind: '가스 행성', desc: '연한 금빛의 줄무늬 가스 행성. 고리는 얼음 조각들이고, 행성의 그림자가 고리에 드리웁니다.' },
+  { name: '천왕성', type: 6, ratio: 4.01,  a: 124, phase: 5.0, spin: -1.30, tilt: 1.71, atmo: [0.15, 0.25, 0.27],
+    kind: '얼음 행성', desc: '메탄 때문에 청록색으로 보이는 매끈한 대기. 자전축이 거의 누워 있습니다(98°).' },
+  { name: '해왕성', type: 7, ratio: 3.88,  a: 146, phase: 0.1, spin:  1.40, tilt: 0.49, atmo: [0.09, 0.15, 0.30],
+    kind: '얼음 행성', desc: '짙은 파랑의 대기에 어두운 폭풍(대흑점)과 하얀 구름 줄기가 보입니다.' },
+];
+BODIES.forEach(function (b) {
+  b.r = b.ratio * E;
+  b.period = 12.0 * Math.pow(b.a / 23.0, 1.5);   // 케플러 제3법칙: 멀수록 훨씬 느리게 돈다
+});
+const EARTH = BODIES[2];
+const MOON = { name: '달', type: 8, ratio: 0.273, r: 0.273 * E, a: 1.6, period: 5.0, phase: 1.0, spin: 0.2,
+  tilt: 0.0, atmo: [0, 0, 0], kind: '위성',
+  desc: '회색 암석. 밝은 고지대, 어두운 바다, 크레이터가 있고 광택은 거의 없습니다.' };
+ 
+function planetPos(b, t) {
+  const th = b.phase + 2 * Math.PI * t / b.period;
+  return [b.a * Math.cos(th), 0, b.a * Math.sin(th)];
+}
+function moonPos(t) {
+  const e = planetPos(EARTH, t);
+  const th = MOON.phase + 2 * Math.PI * t / MOON.period;
+  return [e[0] + MOON.a * Math.cos(th), 0, e[2] + MOON.a * Math.sin(th)];
+}
+ 
+/* ── 카메라가 따라갈 대상 목록 ←→ 로 고른다 ─────────────────────────── */
+const FOCUS = [];
+FOCUS.push({ name: '전체 보기', kind: '', r: 20, dist: 300, pos: function () { return [0, 0, 0]; },
+  desc: '← → 키로 천체를 하나씩 골라 가까이서 볼 수 있습니다.' });
+FOCUS.push({ name: '태양', kind: '항성', r: SUN_R, dist: 40, pos: function () { return [0, 0, 0]; },
+  desc: '스스로 빛나는 구(자체발광). 모든 행성을 밝히는 point 광원이 이 자리에 있습니다. 실제로는 지구의 109배지만 20배로 줄여 그렸습니다.' });
+BODIES.forEach(function (b) {
+  FOCUS.push({ name: b.name, kind: b.kind, r: b.r, dist: Math.max(b.r * (b.ring ? 6.5 : 5.5), 1.3), body: b,
+    pos: function (t) { return planetPos(b, t); },
+    desc: b.desc + ' (지구 반지름의 ' + b.ratio.toFixed(2) + '배)' });
+});
+FOCUS.push({ name: '달', kind: MOON.kind, r: MOON.r, dist: 1.0, body: MOON,
+  pos: function (t) { return moonPos(t); },
+  desc: MOON.desc + ' (지구 반지름의 ' + MOON.ratio.toFixed(2) + '배)' });
+ 
+/* ══════════════════════════════════════════════════════════════════════════
+   7. 입력 — 광원 켜기/끄기, 대상 선택, 시간 조작, 카메라
+   ══════════════════════════════════════════════════════════════════════════ */
+const on = [true, true, true];
+let simTime = 0, paused = false, speed = 1.0, focus = 0;
+let showOrbits = true, showLabels = true;
+ 
 window.addEventListener('keydown', function (e) {
-  if (e.key === '1') on.l1 = !on.l1;
-  if (e.key === '2') on.l2 = !on.l2;
-  if (e.key === 'p' || e.key === 'P') paused = !paused;     // 시간 멈춤 (캡처용)
-  if (e.key === 'ArrowRight') simTime += 2.0;                // 시간을 2초 앞으로
-  if (e.key === 'ArrowLeft')  simTime -= 2.0;                // 시간을 2초 뒤로
+  if (e.key === '1') on[0] = !on[0];
+  if (e.key === '2') on[1] = !on[1];
+  if (e.key === '3') on[2] = !on[2];
+  if (e.key === 'p' || e.key === 'P') paused = !paused;
+  if (e.key === 'o' || e.key === 'O') showOrbits = !showOrbits;
+  if (e.key === 'l' || e.key === 'L') showLabels = !showLabels;
+  if (e.key === 'ArrowUp')   { speed = Math.min(16, speed * 2);    e.preventDefault(); }
+  if (e.key === 'ArrowDown') { speed = Math.max(0.25, speed / 2);  e.preventDefault(); }
+  if (e.key === 'ArrowRight') { setFocus(focus + 1); e.preventDefault(); }
+  if (e.key === 'ArrowLeft')  { setFocus(focus - 1); e.preventDefault(); }
   paintHud();
 });
-const hud   = document.getElementById('hud');
-const clock = document.getElementById('clock');
+ 
+const hud  = document.getElementById('hud');
+const info = document.getElementById('info');
+const LIGHTS = [
+  ['1', 'point',       '태양 — 따뜻한 흰빛 · 멀수록 어두워짐'],
+  ['2', 'directional', '먼 별빛 — 차가운 파랑 · 감쇠 없음'],
+  ['3', '자체발광',     '태양 코로나 · 지구 밤 쪽 도시 불빛'],
+];
 function paintHud() {
-  function row(k, key, text) {
-    return '<div class="' + (on[k] ? '' : 'off') + '"><b>' + key + '</b> ' + text + '</div>';
-  }
-  hud.innerHTML =
-    '<div style="margin-bottom:6px"><b>일몰</b> — 낮 → 황혼 → 밤 → 새벽이 반복됩니다</div>' +
-    row('l1', '1', 'point &nbsp;&nbsp;&nbsp;&nbsp; 해 (거리 감쇠 · 높이에 따라 색이 변함)') +
-    row('l2', '2', 'directional 하늘빛 (파랑 · 감쇠 없음 · 낮엔 밝고 밤엔 어두움)') +
-    '<div style="margin-top:6px"><b>P</b> 시간 멈춤/재개 &nbsp; <b>← →</b> 시간 이동</div>' +
-    '<div style="margin-top:6px;opacity:.6">드래그 = 시점 회전 · 휠 = 확대/축소</div>';
+  let html = '<div style="margin-bottom:6px"><b>태양계</b> — 행성 크기는 실제 비율</div>';
+  LIGHTS.forEach(function (row, i) {
+    html += '<div class="' + (on[i] ? '' : 'off') + '"><b>' + row[0] + '</b> ' + row[1] + ' · ' + row[2] + '</div>';
+  });
+  html += '<div style="margin-top:6px"><b>← →</b> 대상 선택 &nbsp; <b>P</b> ' + (paused ? '재개' : '멈춤') +
+          ' &nbsp; <b>↑ ↓</b> 속도 ×' + speed + '</div>';
+  html += '<div><b>O</b> 궤도선 &nbsp; <b>L</b> 이름 &nbsp; 드래그 = 회전 · 휠 = 확대/축소</div>';
+  hud.innerHTML = html;
 }
-paintHud();
-
-/* ── 카메라 ───────────────────────────────────────────────────────────── */
-const cam = { yaw: 0.6, pitch: 0.12, dist: 12 };
+function paintInfo() {
+  const f = FOCUS[focus];
+  info.innerHTML = '<b>' + f.name + '</b>' + (f.kind ? ' · ' + f.kind : '') + '<br>' + f.desc;
+}
+ 
+// 카메라: 대상 주위를 도는 궤도 카메라. 대상을 바꾸면 부드럽게 옮겨 간다.
+const cam = { yaw: 0.35, pitch: 0.62, dist: 300, goal: 300, off: [0, 0, 0], tgt: [0, 0, 0] };
+function setFocus(i) {
+  focus = ((i % FOCUS.length) + FOCUS.length) % FOCUS.length;
+  const p = FOCUS[focus].pos(simTime);
+  cam.off  = [cam.tgt[0] - p[0], cam.tgt[1] - p[1], cam.tgt[2] - p[2]];
+  cam.goal = FOCUS[focus].dist;
+  paintInfo();
+}
+ 
 let dragging = false, lastX = 0, lastY = 0;
 canvas.addEventListener('pointerdown', function (e) {
   dragging = true; lastX = e.clientX; lastY = e.clientY; canvas.setPointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointermove', function (e) {
   if (!dragging) return;
-  cam.yaw += (e.clientX - lastX) * 0.008;
-  cam.pitch = Math.max(-0.05, Math.min(1.2, cam.pitch + (e.clientY - lastY) * 0.005));
+  cam.yaw   += (e.clientX - lastX) * 0.008;
+  cam.pitch  = Math.max(-1.45, Math.min(1.45, cam.pitch + (e.clientY - lastY) * 0.006));
   lastX = e.clientX; lastY = e.clientY;
 });
 canvas.addEventListener('pointerup', function (e) {
@@ -281,163 +664,167 @@ canvas.addEventListener('pointerup', function (e) {
 });
 canvas.addEventListener('wheel', function (e) {
   e.preventDefault();
-  cam.dist = Math.max(4, Math.min(40, cam.dist * (1 + e.deltaY * 0.001)));
+  cam.goal = Math.max(FOCUS[focus].r * 1.4, Math.min(700, cam.goal * (1 + e.deltaY * 0.001)));
 }, { passive: false });
-
-/* ── 장면: 모든 물체는 동그란 공 (반지름 r 하나로만 크기 조절) ─────────
-   공마다 다른 것은 물체색(color), 광택의 폭(shin = uShininess),
-   광택의 세기(ks) 세 가지뿐이다. 이름은 이 값들이 만드는 인상을 적은 것이다. */
-const GROUND     = { color: [0.22, 0.17, 0.14], shin: 28,  ks: 0.18 };                                  // 바닥 — 해 쪽으로 번들거림
-const MATTE      = { at: [-2.6, 1.0, 0.4],  r: 1.0,  color: [0.70, 0.38, 0.26], shin: 4,   ks: 0.02 };  // 무광 — 하이라이트가 거의 없음
-const SHINY      = { at: [0.6, 0.8, -0.6],  r: 0.8,  color: [0.25, 0.45, 0.60], shin: 200, ks: 1.0 };   // 광택 — 작고 날카로운 하이라이트
-const SEMI_MATTE = { at: [3.0, 0.6, -1.2],  r: 0.6,  color: [0.30, 0.27, 0.27], shin: 14,  ks: 0.10 };  // 약한 광택 — 흐릿한 하이라이트
-const DARK_MATTE = { at: [-0.4, 0.45, 2.0], r: 0.45, color: [0.22, 0.20, 0.20], shin: 6,   ks: 0.03 };  // 어두운 무광
-
-/* ── 시간대별 색 팔레트 ───────────────────────────────────────────────── */
-const DOME_DAY   = { horizon: [0.78, 0.88, 1.00], mid: [0.38, 0.62, 0.95], zenith: [0.15, 0.38, 0.80] };
-const DOME_DUSK  = { horizon: [1.00, 0.42, 0.16], mid: [0.30, 0.16, 0.38], zenith: [0.02, 0.05, 0.16] };
-const DOME_NIGHT = { horizon: [0.05, 0.07, 0.16], mid: [0.02, 0.03, 0.09], zenith: [0.005, 0.01, 0.04] };
-
-const SKYLIGHT_DAY   = [0.35, 0.52, 0.95];   // 하늘빛(directional) — 낮: 밝은 파랑
-const SKYLIGHT_DUSK  = [0.22, 0.36, 0.80];   //                       황혼: 약한 파랑
-const SKYLIGHT_NIGHT = [0.07, 0.10, 0.25];   //                       밤: 아주 어두운 남색
-
-const SUN_LOW_COLOR  = [6.5, 1.3, 0.35];     // 해가 낮을 때: 짙은 주황
-const SUN_HIGH_COLOR = [5.2, 4.2, 3.2];      // 해가 높을 때: 희고 따뜻한 빛
-const DISC_LOW_COLOR  = [1.0, 0.30, 0.08];   // 해(자체발광 구)의 색: 낮을 때
-const DISC_HIGH_COLOR = [1.0, 0.92, 0.75];   //                       높을 때
-
-/* ── 작은 도구 함수 ──────────────────────────────────────────────────── */
-function clamp01(x) { return Math.min(1, Math.max(0, x)); }
-function smoothstepJS(e0, e1, x) {            // GLSL 의 smoothstep 과 같은 계산 (e0 > e1 이면 거꾸로)
-  const t = clamp01((x - e0) / (e1 - e0));
-  return t * t * (3 - 2 * t);
+ 
+/* ── 천체 이름표 (화면 좌표로 옮겨서 겹쳐 그린다) ───────────────────── */
+const labelBox = document.getElementById('labels');
+const LABELS = [];
+function addLabel(name, getPos, entryName) {
+  const el = document.createElement('div');
+  el.className = 'lab';
+  el.textContent = name;
+  labelBox.appendChild(el);
+  LABELS.push({ el: el, name: entryName || name, pos: getPos });
 }
-function mixColor(a, b, t) {
-  return [a[0] + (b[0]-a[0])*t, a[1] + (b[1]-a[1])*t, a[2] + (b[2]-a[2])*t];
+addLabel('태양', function () { return [0, 0, 0]; });
+BODIES.forEach(function (b) { addLabel(b.name, function (t) { return planetPos(b, t); }); });
+addLabel('달', function (t) { return moonPos(t); });
+ 
+function project(vp, p, w, h) {
+  const x = vp[0]*p[0] + vp[4]*p[1] + vp[8]*p[2]  + vp[12];
+  const y = vp[1]*p[0] + vp[5]*p[1] + vp[9]*p[2]  + vp[13];
+  const q = vp[3]*p[0] + vp[7]*p[1] + vp[11]*p[2] + vp[15];
+  if (q <= 0) return null;
+  return [(x / q * 0.5 + 0.5) * w, (1 - (y / q * 0.5 + 0.5)) * h];
 }
-function blend3(a, b, c, wa, wb, wc) {         // 세 색을 가중치 합으로 섞는다
-  return [a[0]*wa + b[0]*wb + c[0]*wc,
-          a[1]*wa + b[1]*wb + c[1]*wc,
-          a[2]*wa + b[2]*wb + c[2]*wc];
+ 
+/* ══════════════════════════════════════════════════════════════════════════
+   8. 보조 함수와 매 프레임 그리기
+   ══════════════════════════════════════════════════════════════════════════ */
+function drawBody(b, t, pos) {
+  const m = Mat4.multiply(Mat4.translate(pos[0], pos[1], pos[2]),
+            Mat4.multiply(Mat4.rotateZ(b.tilt),
+            Mat4.multiply(Mat4.rotateY(b.spin * t), Mat4.scale(b.r, b.r, b.r))));
+  setModel(m);
+  gl.uniform1i(U.uMode, 0);
+  gl.uniform1i(U.uType, b.type);
+  gl.uniform3fv(U.uAtmo, b.atmo);
+  drawMesh(sphere);
 }
-
-function draw(mesh, model, color, shin, ks, emissive) {
-  gl.uniformMatrix4fv(U.uModel, false, model);
-  gl.uniformMatrix3fv(U.uNormalMat, false, Mat4.normalFromMat4(model));
-  gl.uniform3fv(U.uBaseColor, color);
-  gl.uniform1f(U.uShininess, shin);
-  gl.uniform1f(U.uKs, ks);
-  gl.uniform1i(U.uEmissive, emissive ? 1 : 0);
-  gl.bindVertexArray(mesh.vao);
-  gl.drawElements(gl.TRIANGLES, mesh.count, gl.UNSIGNED_SHORT, 0);
-}
-
-// 공 하나를 그린다: 위치 + 반지름 (x, y, z 를 같은 값으로 키운다)
-function drawBall(obj, t, spin) {
-  let m = Mat4.translate(obj.at[0], obj.at[1], obj.at[2]);
-  if (spin) m = Mat4.multiply(m, Mat4.rotateY(t * spin));
-  m = Mat4.multiply(m, Mat4.scale(obj.r, obj.r, obj.r));
-  draw(sphere, m, obj.color, obj.shin, obj.ks, false);
-}
-
-function render() {
-  // 시간 진행 (멈춤 상태에서는 흐르지 않는다)
-  const now = performance.now();
-  if (!paused) simTime += (now - lastFrame) / 1000;
-  lastFrame = now;
+ 
+let prevFrame = null;
+function render(now) {
+  if (prevFrame === null) prevFrame = now;
+  const dt = Math.min(0.1, Math.max(0, (now - prevFrame) / 1000));
+  prevFrame = now;
+  if (!paused) simTime += dt * speed;
   const t = simTime;
-
+ 
+  // 카메라 이동 (대상을 바꿨을 때 남은 차이는 서서히 줄어든다)
+  const p = FOCUS[focus].pos(t);
+  const decay = Math.exp(-dt * 4.5);
+  cam.off = [cam.off[0] * decay, cam.off[1] * decay, cam.off[2] * decay];
+  cam.tgt = [p[0] + cam.off[0], p[1] + cam.off[1], p[2] + cam.off[2]];
+  cam.dist += (cam.goal - cam.dist) * (1 - Math.exp(-dt * 4.0));
+ 
   const dpr = window.devicePixelRatio || 1;
   const w = Math.floor(canvas.clientWidth * dpr), h = Math.floor(canvas.clientHeight * dpr);
   if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
   gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.clearColor(0.02, 0.015, 0.03, 1.0);
+  gl.clearColor(0.0, 0.0, 0.0, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
+ 
   const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
-  const eye = [Math.sin(cam.yaw)*cp*cam.dist, sp*cam.dist + 1.2, Math.cos(cam.yaw)*cp*cam.dist];
-  const view = Mat4.lookAt(eye, [0, 1.1, 0], [0, 1, 0]);
-  const proj = Mat4.perspective(Math.PI/4, canvas.width/canvas.height, 0.1, 3000);
-
-  /* ── 하루의 흐름: 해의 높이 하나(sunH)로 모든 것을 정한다 ─────────────
-     sunH =  1 → 정오,  0 → 지평선(일몰/일출),  -1 → 한밤                  */
-  const phase = START_PHASE + 2 * Math.PI * (simTime / PERIOD);
-  const sunH  = Math.sin(phase);
-  const sunPos = [-38.0, 26.0 * sunH, -26.0];          // 같은 자리에서 오르내린다 (지평선 아래로 내려감)
-
-  // 시간대 가중치: 낮 / 밤 / 황혼 (세 개를 합치면 1)
-  const wDay   = smoothstepJS(0.10, 0.55, sunH);
-  const wNight = smoothstepJS(0.0, -0.30, sunH);
-  const wDusk  = Math.max(0, 1 - wDay - wNight);
-
-  // ① point — 해: 높을수록 희고 밝고, 낮을수록 붉다. 지평선 아래에서는 빛이 꺼진다.
-  const sunUp    = smoothstepJS(-0.06, 0.10, sunH);     // 0 = 빛 없음, 1 = 빛 충분
-  const heightK  = smoothstepJS(0.0, 0.6, sunH);        // 0 = 붉음, 1 = 희고 따뜻함
-  const sunMix   = mixColor(SUN_LOW_COLOR, SUN_HIGH_COLOR, heightK);
-  const sunColor = [sunMix[0]*sunUp, sunMix[1]*sunUp, sunMix[2]*sunUp];
-
-  // ② directional — 하늘빛: 낮에는 밝고, 황혼엔 약하고, 밤엔 아주 어둡다.
-  const skyLight = blend3(SKYLIGHT_DAY, SKYLIGHT_DUSK, SKYLIGHT_NIGHT, wDay, wDusk, wNight);
-
-  // ambient 도 시간에 따라 변한다 (낮 0.05 → 밤 0.015)
-  const ambient = 0.05 * wDay + 0.03 * wDusk + 0.015 * wNight;
-
-  // 하늘 돔의 세 색
-  const domeHorizon = blend3(DOME_DAY.horizon, DOME_DUSK.horizon, DOME_NIGHT.horizon, wDay, wDusk, wNight);
-  const domeMid     = blend3(DOME_DAY.mid,     DOME_DUSK.mid,     DOME_NIGHT.mid,     wDay, wDusk, wNight);
-  const domeZenith  = blend3(DOME_DAY.zenith,  DOME_DUSK.zenith,  DOME_NIGHT.zenith,  wDay, wDusk, wNight);
-  const glowAmt     = smoothstepJS(-0.25, 0.05, sunH) * (1 - 0.85 * wDay);   // 해 주변 번짐 (황혼에 가장 강함)
-
+  const eye = [cam.tgt[0] + Math.sin(cam.yaw) * cp * cam.dist,
+               cam.tgt[1] + sp * cam.dist,
+               cam.tgt[2] + Math.cos(cam.yaw) * cp * cam.dist];
+  const view = Mat4.lookAt(eye, cam.tgt, [0, 1, 0]);
+  const proj = Mat4.perspective(50 * Math.PI / 180, canvas.width / canvas.height, 0.05, 5000);
+ 
   gl.useProgram(program);
   gl.uniformMatrix4fv(U.uView, false, view);
   gl.uniformMatrix4fv(U.uProj, false, proj);
   gl.uniform3fv(U.uViewPos, eye);
-  gl.uniform1f(U.uKa, ambient);
-
-  gl.uniform3fv(U.uSunPos, sunPos);
-  gl.uniform3fv(U.uSunColor, sunColor);
-  gl.uniform1f(U.uSunK1, 0.0);
-  gl.uniform1f(U.uSunK2, 0.0006);
-
-  gl.uniform3f(U.uSkyDir, -0.2, -0.9, -0.35);
-  gl.uniform3fv(U.uSkyColor, skyLight);
-
-  gl.uniform1i(U.uOn1, on.l1 ? 1 : 0);
-  gl.uniform1i(U.uOn2, on.l2 ? 1 : 0);
-
-  gl.uniform3fv(U.uDomeHorizon, domeHorizon);
-  gl.uniform3fv(U.uDomeMid, domeMid);
-  gl.uniform3fv(U.uDomeZenith, domeZenith);
-  gl.uniform1f(U.uGlow, glowAmt);
-
-  // 하늘 돔 (가장 먼저)
-  gl.uniform1i(U.uSky, 1);
-  draw(sphere, Mat4.scale(800, 800, 800), [0, 0, 0], 1, 0, false);
-  gl.uniform1i(U.uSky, 0);
-
-  // 바닥
-  draw(plane, Mat4.identity(), GROUND.color, GROUND.shin, GROUND.ks, false);
-
-  // 공 네 개 (모두 균등 스케일)
-  drawBall(MATTE,      t, 0.1);   // 무광 공 — 천천히 자전
-  drawBall(SHINY,      t, 0);     // 광택 공
-  drawBall(SEMI_MATTE, t, 0);     // 약한 광택 공
-  drawBall(DARK_MATTE, t, 0);     // 어두운 무광 공
-
-  // 해 — 자체발광 구 (지평선 아래로 내려가면 바닥에 가려진다)
-  if (on.l1) draw(sphere, Mat4.multiply(Mat4.translate(sunPos[0], sunPos[1], sunPos[2]),
-                   Mat4.scale(2.6, 2.6, 2.6)), mixColor(DISC_LOW_COLOR, DISC_HIGH_COLOR, heightK),
-                   1, 0, true);
-
-  // 화면 오른쪽 위에 지금이 하루 중 언제인지 표시
-  const label = wNight > 0.5 ? '밤' : (wDay > 0.5 ? '낮' : (sunH >= 0 ? '일몰 (황혼)' : '황혼 (해가 진 뒤)'));
-  clock.textContent = label + (paused ? '  ⏸ 멈춤' : '');
-
+  gl.uniform1f(U.uTime, t);
+ 
+  // ① point — 태양 (장면의 중심, 따뜻한 흰빛, 거리에 따라 어두워짐)
+  gl.uniform3f(U.uSunPos, 0, 0, 0);
+  gl.uniform3f(U.uSunColor, 2.6, 2.35, 1.95);
+  gl.uniform1f(U.uSunAtt, 0.00009);
+  // ② directional — 먼 다른 별에서 오는 약하고 차가운 빛 (방향 하나, 감쇠 없음)
+  gl.uniform3f(U.uStarDir, 0.40, -0.25, -0.85);
+  gl.uniform3f(U.uStarColor, 0.18, 0.28, 0.60);
+  gl.uniform1f(U.uOn1, on[0] ? 1 : 0);
+  gl.uniform1f(U.uOn2, on[1] ? 1 : 0);
+  gl.uniform1f(U.uOn3, on[2] ? 1 : 0);
+  gl.uniform1f(U.uAmb, 0.015);                    // 우주 공간 — ambient 는 거의 0
+ 
+  /* ① 하늘 — 카메라를 따라다니는 아주 큰 구 */
+  gl.depthMask(false);
+  setModel(Mat4.multiply(Mat4.translate(eye[0], eye[1], eye[2]), Mat4.scale(2500, 2500, 2500)));
+  gl.uniform1i(U.uMode, 4);
+  drawMesh(sphere);
+ 
+  /* ② 궤도선 */
+  if (showOrbits) {
+    gl.uniform1i(U.uMode, 5);
+    for (let i = 0; i < BODIES.length; i++) {
+      const b = BODIES[i];
+      const picked = FOCUS[focus].body === b;
+      setModel(Mat4.scale(b.a, 1, b.a));
+      gl.uniform3f(U.uColor, 0.55, 0.65, 0.85);
+      gl.uniform1f(U.uAlpha, picked ? 0.65 : 0.20);
+      drawMesh(orbit, gl.LINE_LOOP);
+    }
+  }
+  gl.depthMask(true);
+ 
+  /* ③ 태양 표면 */
+  setModel(Mat4.scale(SUN_R, SUN_R, SUN_R));
+  gl.uniform1i(U.uMode, 1);
+  drawMesh(sphere);
+ 
+  /* ④ 행성과 달 */
+  for (let i = 0; i < BODIES.length; i++) drawBody(BODIES[i], t, planetPos(BODIES[i], t));
+  drawBody(MOON, t, moonPos(t));
+ 
+  /* ⑤ 토성 고리 (반투명 — 불투명한 것을 모두 그린 뒤에) */
+  const saturn = BODIES[5], sp5 = planetPos(saturn, t);
+  gl.depthMask(false);
+  setModel(Mat4.multiply(Mat4.translate(sp5[0], sp5[1], sp5[2]),
+           Mat4.multiply(Mat4.rotateZ(saturn.tilt), Mat4.scale(saturn.r, saturn.r, saturn.r))));
+  gl.uniform1i(U.uMode, 3);
+  gl.uniform3fv(U.uPlanetPos, sp5);
+  gl.uniform1f(U.uPlanetR, saturn.r);
+  drawMesh(ring);
+ 
+  /* ⑥ 태양 코로나 (빛을 더하는 혼합) — 수정 12: 1 키(태양 광원)와 무관하게 3 키만으로 켜고 끈다 */
+  if (on[2]) {
+    gl.blendFunc(gl.ONE, gl.ONE);
+    setModel(Mat4.scale(SUN_R * 1.6, SUN_R * 1.6, SUN_R * 1.6));
+    gl.uniform1i(U.uMode, 2);
+    drawMesh(sphere);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  }
+  gl.depthMask(true);
   gl.bindVertexArray(null);
+ 
+  /* ⑦ 이름표 */
+  const vp = Mat4.multiply(proj, view);
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  const focusName = FOCUS[focus].name;
+  const nearEarth = (focusName === '지구' || focusName === '달');
+  for (let i = 0; i < LABELS.length; i++) {
+    const L = LABELS[i];
+    const s = (showLabels && !(L.name === '달' && !nearEarth)) ? project(vp, L.pos(t), cw, ch) : null;
+    if (!s || s[0] < -40 || s[0] > cw + 40 || s[1] < -20 || s[1] > ch + 20) {
+      L.el.style.display = 'none';
+    } else {
+      L.el.style.display = 'block';
+      L.el.style.transform = 'translate(' + (s[0] + 10).toFixed(0) + 'px,' + (s[1] - 8).toFixed(0) + 'px)';
+      L.el.className = 'lab' + (L.name === focusName ? ' sel' : '');
+    }
+  }
+ 
   requestAnimationFrame(render);
 }
+ 
+paintHud();
+setFocus(0);
+cam.off = [0, 0, 0];
 requestAnimationFrame(render);
 </script>
 </body>
 </html>
+ 
