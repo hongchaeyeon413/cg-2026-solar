@@ -32,7 +32,8 @@ uniform vec3 uEye,uLight;
 uniform float uRough,uMetal,uNormalStrength,uPower,uAmbient,uEnvPower,uTime;
 uniform float uIceAmount,uIceThreshold,uIceStrength;
 uniform float uCraterAmount,uCraterSize,uCraterStrength;
-uniform int uDebugMode;
+uniform float uSolarDistance;
+uniform int uDebugMode,uSunMode;
 
 vec3 srgbToLinear(vec3 c){
  return mix(c/12.92,pow((c+.055)/1.055,vec3(2.4)),step(vec3(.04045),c));
@@ -68,7 +69,8 @@ float iceMask(vec3 S){
  float regional=fbm(S*vec3(4.0,7.0,4.0)+vec3(11.0,3.0,19.0));
  float breakup=fbm(S*vec3(11.0,16.0,11.0)+vec3(5.0,17.0,29.0));
  float pattern=mix(regional,breakup,.35);
- float signal=clamp(latitude*.72+pattern*.48,0.0,1.0);
+ float seasonalIce=smoothstep(.15,.85,uSolarDistance);
+ float signal=clamp(latitude*.72+pattern*.48+seasonalIce*.22,0.0,1.0);
  return smoothstep(uIceThreshold-.12,uIceThreshold+.12,signal)*uIceAmount;
 }
 float craterDistance(vec3 S){
@@ -125,6 +127,12 @@ vec3 directPBR(vec3 N,vec3 V,vec3 L,vec3 base,float rough,float metal){
  return (kd*base/PI+D*G*F/max(4.0*nl*nv,1e-4))*nl*uPower;
 }
 void main(){
+ if(uSunMode==1){
+  vec3 emission=vec3(7.0,3.0,0.65);
+  emission=emission/(1.0+emission);
+  outColor=vec4(linearToSrgb(emission),1.0);
+  return;
+ }
  vec3 N=normalize(vWorldNormal),V=normalize(uEye-vWorldPos);
  vec3 L=normalize(uLight-vWorldPos);
  vec3 S=normalize(vLocalPos);
@@ -198,6 +206,7 @@ const prog=D.program(gl,VS,FS),U=D.uniforms(gl,prog,[
  'uNormalStrength','uPower','uAmbient','uEnvPower','uTime',
  'uIceAmount','uIceThreshold','uIceStrength',
  'uCraterAmount','uCraterSize','uCraterStrength','uDebugMode',
+ 'uSolarDistance','uSunMode',
  'uColor','uNormal','uARM','uEnv'
 ]);
 const mesh=D.upload(gl,D.revolution(D.profiles.sphere(.95,64),96));
@@ -244,19 +253,20 @@ const S=D.UI('#ui',[
  {id:'iceAmount',label:'얼음 분포량',min:0,max:1,step:.01,value:1},
  {id:'iceThreshold',label:'얼음 경계',min:0,max:1,step:.01,value:.62},
  {id:'iceStrength',label:'얼음 강도',min:0,max:1,step:.01,value:.72},
- {id:'iceDebug',type:'select',label:'얼음 마스크',value:'final',options:[
-  {value:'final',label:'일반 모드'},{value:'mask',label:'얼음 마스크'}]},
  {id:'craterAmount',label:'크레이터 개수',min:0,max:1,step:.01,value:.45},
  {id:'craterSize',label:'크레이터 크기',min:0,max:1,step:.01,value:.5},
  {id:'craterStrength',label:'크레이터 강도',min:0,max:1,step:.01,value:.75},
- {id:'craterDebug',type:'select',label:'크레이터 마스크',value:'final',options:[
-  {value:'final',label:'일반 모드'},{value:'mask',label:'크레이터 마스크'}]}
+ {id:'debug',type:'select',label:'진단 모드',value:'final',options:[
+  {value:'final',label:'일반 모드'},
+  {value:'ice',label:'얼음 마스크'},
+  {value:'crater',label:'크레이터 마스크'}]},
+ {id:'solarDistance',label:'태양 거리',min:0,max:1,step:.01,value:.45}
 ]);
 const cam=D.orbit(cv,{dist:3.3,pitch:.12});
 document.querySelector('#reset').onclick=()=>{cam.dist=3.3;cam.yaw=0;cam.pitch=.12;};
 const view=D.M4.create(),proj=D.M4.create(),vp=D.M4.create(),model=D.M4.create();
-const eye=[0,0,0],light=[2.5,1.8,3.5];
-document.querySelector('#note').textContent='catholic · 해왕성풍 푸른 대기와 구름 streak · 천천히 자전 중';
+const eye=[0,0,0],light=[0,0,0],sunModel=D.M4.create();
+document.querySelector('#note').textContent='catholic · 태양 거리와 얼음 분포가 연결된 해왕성풍 행성';
 let visible=true; new IntersectionObserver(e=>visible=e[0].isIntersecting).observe(cv);
 D.loop((time)=>{
  if(!visible||document.hidden)return;
@@ -268,6 +278,10 @@ D.loop((time)=>{
  D.M4.multiply(vp,proj,view);
  D.M4.identity(model);
  D.M4.rotateY(model,model,time*.18);
+ const solarDistance=S.solarDistance;
+ light[0]=1.8+.9*solarDistance;
+ light[1]=1.0+.5*solarDistance;
+ light[2]=2.4+1.2*solarDistance;
  gl.useProgram(prog);
  gl.uniformMatrix4fv(U.uVP,false,vp);
  gl.uniformMatrix4fv(U.uModel,false,model);
@@ -275,6 +289,8 @@ D.loop((time)=>{
  gl.uniform3fv(U.uEye,camera);
  gl.uniform3fv(U.uLight,light);
  gl.uniform1f(U.uTime,time);
+ gl.uniform1f(U.uSolarDistance,solarDistance);
+ gl.uniform1i(U.uSunMode,0);
  for(const [key,value] of Object.entries({
   uRough:S.rough,uMetal:S.metal,uNormalStrength:S.normal,
   uPower:S.power,uAmbient:S.ambient,uEnvPower:S.env
@@ -285,13 +301,20 @@ D.loop((time)=>{
  gl.uniform1f(U.uCraterAmount,S.craterAmount);
  gl.uniform1f(U.uCraterSize,S.craterSize);
  gl.uniform1f(U.uCraterStrength,S.craterStrength);
- gl.uniform1i(U.uDebugMode,
-  S.craterDebug==='mask'?2:(S.iceDebug==='mask'?1:0));
+ gl.uniform1i(U.uDebugMode,S.debug==='crater'?2:(S.debug==='ice'?1:0));
  const textures=[colorTex,normalTex,armTex,env.tex];
  textures.forEach((tex,i)=>{
   gl.activeTexture(gl.TEXTURE0+i); gl.bindTexture(gl.TEXTURE_2D,tex);
   gl.uniform1i(U[['uColor','uNormal','uARM','uEnv'][i]],i);
  });
+ gl.bindVertexArray(mesh.vao);
+ gl.drawElements(gl.TRIANGLES,mesh.count,gl.UNSIGNED_SHORT,0);
+ D.M4.identity(sunModel);
+ D.M4.translate(sunModel,sunModel,light);
+ D.M4.scale(sunModel,sunModel,[.28,.28,.28]);
+ gl.uniformMatrix4fv(U.uModel,false,sunModel);
+ gl.uniformMatrix3fv(U.uNormalMat,false,D.M4.normalFrom(sunModel));
+ gl.uniform1i(U.uSunMode,1);
  gl.bindVertexArray(mesh.vao);
  gl.drawElements(gl.TRIANGLES,mesh.count,gl.UNSIGNED_SHORT,0);
  gl.bindVertexArray(null);
