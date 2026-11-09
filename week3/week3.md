@@ -2,6 +2,8 @@
 
 # 실습 1
 
+(https://hongchaeyeon413.github.io/cg-2026-solar/week3/task1.html)
+
 완성 목표: 높은 곳에서 대각선으로 내려다보는 시점에서, 바닥이 깔린 3차원 공간에 공 하나가 공중에 떠서 천천히 도는 장면
 
 ## 6단계 — 변환 순서 비교: 자전 vs 공전
@@ -216,6 +218,7 @@ function render() {
 
 # 실습2
 
+(https://hongchaeyeon413.github.io/cg-2026-solar/week3/task2.html)
 
 ## 실습 2 행성: 가스 행성 (Gas Giant)
 
