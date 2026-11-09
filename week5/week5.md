@@ -1,5 +1,7 @@
 # 5주차 실습 1
 
+(https://hongchaeyeon0413.github.io/cg-2026-solar/week5/task1.html)
+
 ## 1. 단계 1~4 적용 캡처
 
 같은 각도에서 단계별로 조명 항을 하나씩 더해 가며 캡처했습니다.
@@ -52,6 +54,8 @@
 
 
 # 5주차 실습 2
+
+(https://hongchaeyeon0413.github.io/cg-2026-solar/week5/task2.html)
  
 ## 1. 의도
  
