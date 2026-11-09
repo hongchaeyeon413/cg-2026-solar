@@ -30,6 +30,8 @@ out vec4 outColor;
 uniform sampler2D uColor,uNormal,uARM,uEnv;
 uniform vec3 uEye,uLight;
 uniform float uRough,uMetal,uNormalStrength,uPower,uAmbient,uEnvPower,uTime;
+uniform float uIceAmount,uIceThreshold,uIceStrength;
+uniform int uDebugMode;
 
 vec3 srgbToLinear(vec3 c){
  return mix(c/12.92,pow((c+.055)/1.055,vec3(2.4)),step(vec3(.04045),c));
@@ -59,6 +61,14 @@ float fbm(vec3 p){
   amplitude*=.5;
  }
  return value;
+}
+float iceMask(vec3 S){
+ float latitude= smoothstep(.28,.92,abs(S.y));
+ float regional=fbm(S*vec3(4.0,7.0,4.0)+vec3(11.0,3.0,19.0));
+ float breakup=fbm(S*vec3(11.0,16.0,11.0)+vec3(5.0,17.0,29.0));
+ float pattern=mix(regional,breakup,.35);
+ float signal=clamp(latitude*.72+pattern*.48,0.0,1.0);
+ return smoothstep(uIceThreshold-.12,uIceThreshold+.12,signal)*uIceAmount;
 }
 vec3 nereidBase(vec3 S){
  float lat=S.y;
@@ -95,10 +105,19 @@ void main(){
  vec3 S=normalize(vLocalPos);
  vec3 textureBase=srgbToLinear(texture(uColor,vUV).rgb);
  vec3 base=nereidBase(S)*textureBase;
+ float ice=iceMask(S);
+ if(uDebugMode==1){
+  outColor=vec4(vec3(ice),1.0);
+  return;
+ }
+ vec3 iceColor=vec3(.62,.84,.98);
+ float iceEffect=ice*uIceStrength;
+ base=mix(base,mix(iceColor,vec3(.90,.97,1.0),ice),iceEffect);
  vec3 arm=texture(uARM,vUV).rgb;
  float ao=arm.r;
  float rough=max(arm.g*uRough,.045);
  float metal=arm.b*uMetal;
+ rough=mix(rough,.46,iceEffect);
  if(uNormalStrength>0.0){
   vec3 dp1=dFdx(vWorldPos),dp2=dFdy(vWorldPos);
   vec2 du1=dFdx(vUV),du2=dFdy(vUV);
@@ -107,6 +126,13 @@ void main(){
   float inv=inversesqrt(max(max(dot(T,T),dot(B,B)),1e-8));
   vec3 mapN=texture(uNormal,vUV).xyz*2.0-1.0;
   mapN.xy*=uNormalStrength;
+  float crackNoise=noise3(S*32.0+vec3(7.0,13.0,23.0));
+  float crack=smoothstep(.42,.58,crackNoise);
+  vec2 iceBump=vec2(
+   noise3(S*46.0+vec3(2.0,19.0,31.0)),
+   noise3(S*46.0+vec3(37.0,5.0,11.0))
+  )*2.0-1.0;
+  mapN.xy+=iceBump*(.08+.12*crack)*iceEffect;
   N=normalize(mat3(T*inv,B*inv,N)*normalize(mapN));
  }
  vec3 color=directPBR(N,V,L,base,rough,metal);
@@ -125,6 +151,7 @@ void main(){
 const prog=D.program(gl,VS,FS),U=D.uniforms(gl,prog,[
  'uVP','uModel','uNormalMat','uEye','uLight','uRough','uMetal',
  'uNormalStrength','uPower','uAmbient','uEnvPower','uTime',
+ 'uIceAmount','uIceThreshold','uIceStrength','uDebugMode',
  'uColor','uNormal','uARM','uEnv'
 ]);
 const mesh=D.upload(gl,D.revolution(D.profiles.sphere(.95,64),96));
@@ -167,7 +194,12 @@ const S=D.UI('#ui',[
  {id:'normal',label:'normal 강도',min:0,max:5,step:.1,value:1},
  {id:'power',label:'직접광 세기',min:0,max:8,step:.1,value:4},
  {id:'ambient',label:'상수 ambient',min:0,max:1,step:.01,value:.15},
- {id:'env',label:'환경맵 반사 세기',min:0,max:3,step:.1,value:1.2}
+ {id:'env',label:'환경맵 반사 세기',min:0,max:3,step:.1,value:1.2},
+ {id:'iceAmount',label:'얼음 분포량',min:0,max:1,step:.01,value:1},
+ {id:'iceThreshold',label:'얼음 경계',min:0,max:1,step:.01,value:.62},
+ {id:'iceStrength',label:'얼음 강도',min:0,max:1,step:.01,value:.72},
+ {id:'iceDebug',type:'select',label:'얼음 마스크',value:'final',options:[
+  {value:'final',label:'일반 모드'},{value:'mask',label:'마스크 모드'}]}
 ]);
 const cam=D.orbit(cv,{dist:3.3,pitch:.12});
 document.querySelector('#reset').onclick=()=>{cam.dist=3.3;cam.yaw=0;cam.pitch=.12;};
@@ -196,6 +228,10 @@ D.loop((time)=>{
   uRough:S.rough,uMetal:S.metal,uNormalStrength:S.normal,
   uPower:S.power,uAmbient:S.ambient,uEnvPower:S.env
  })) gl.uniform1f(U[key],value);
+ gl.uniform1f(U.uIceAmount,S.iceAmount);
+ gl.uniform1f(U.uIceThreshold,S.iceThreshold);
+ gl.uniform1f(U.uIceStrength,S.iceStrength);
+ gl.uniform1i(U.uDebugMode,S.iceDebug==='mask'?1:0);
  const textures=[colorTex,normalTex,armTex,env.tex];
  textures.forEach((tex,i)=>{
   gl.activeTexture(gl.TEXTURE0+i); gl.bindTexture(gl.TEXTURE_2D,tex);
