@@ -273,6 +273,7 @@ const S=D.UI('#ui',[
  {id:'craterAmount',label:'크레이터 개수',min:0,max:1,step:.01,value:.45},
  {id:'craterSize',label:'크레이터 크기',min:0,max:1,step:.01,value:.5},
  {id:'craterStrength',label:'크레이터 강도',min:0,max:1,step:.01,value:.75},
+ {id:'spin',type:'check',label:'자전 정지',value:false},
  {id:'compare',type:'check',label:'기본 표면과 비교',value:false},
  {id:'debug',type:'select',label:'진단 모드',value:'final',options:[
   {value:'final',label:'일반 모드'},
@@ -280,13 +281,16 @@ const S=D.UI('#ui',[
   {value:'crater',label:'크레이터 마스크'}]},
  {id:'solarDistance',label:'태양 거리',min:0,max:1,step:.01,value:.45}
 ]);
-const cam=D.orbit(cv,{dist:3.3,pitch:.12});
-document.querySelector('#reset').onclick=()=>{cam.dist=3.3;cam.yaw=0;cam.pitch=.12;};
+const cam=D.orbit(cv,{dist:5.2,pitch:.12});
+document.querySelector('#reset').onclick=()=>{cam.dist=5.2;cam.yaw=0;cam.pitch=.12;};
 const view=D.M4.create(),proj=D.M4.create(),vp=D.M4.create(),model=D.M4.create();
 const eye=[0,0,0],light=[0,0,0],sunModel=D.M4.create();
 document.querySelector('#note').textContent='catholic · 태양 거리와 얼음 분포가 연결된 해왕성풍 행성';
 let visible=true; new IntersectionObserver(e=>visible=e[0].isIntersecting).observe(cv);
+let lastTime=null,spinAngle=0;
 D.loop((time)=>{
+ const delta=lastTime===null?0:time-lastTime;
+ lastTime=time;
  if(!visible||document.hidden)return;
  D.fit(cv); gl.viewport(0,0,cv.width,cv.height); D.clearColor(gl);
  gl.enable(gl.DEPTH_TEST); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
@@ -295,7 +299,8 @@ D.loop((time)=>{
  D.M4.perspective(proj,Math.PI/4,cv.width/cv.height,.1,100);
  D.M4.multiply(vp,proj,view);
  D.M4.identity(model);
- D.M4.rotateY(model,model,time*.18);
+ if(!S.spin)spinAngle+=delta*.18;
+ D.M4.rotateY(model,model,spinAngle);
  const solarDistance=S.solarDistance;
  light[0]=1.8+.9*solarDistance;
  light[1]=1.0+.5*solarDistance;
