@@ -20,12 +20,31 @@
       {value:'1',label:'1회'}, {value:'2',label:'2회'}, {value:'3',label:'3회'}, {value:'4',label:'4회'}]},
     {id:'advanced',type:'check',label:'거울·굴절·환경 반사',value:true}
   ]);
-  // TODO (실습 2): 여러 실제 기기의 측정 결과를 바탕으로 이 자동 선택 규칙을 수정한다.
-  // PC/노트북 구분은 브라우저가 보장하지 않으므로 저장한 기기별 설정이나 간단한 벤치마크를 활용할 수 있다.
+  const profileStorageKey='cg2026-week7-task2-profile';
+  const deviceProfile=navigator.userAgentData?.mobile || matchMedia('(pointer:coarse)').matches
+    ? {key:'mobile',name:'기기 B 스마트폰 측정값',resolution:'1280',samples:'16',bounces:'4',advanced:false}
+    : {key:'desktop',name:'기기 A 노트북 측정값',resolution:'1920',samples:'4',bounces:'1',advanced:true};
+  function readSavedProfile(){
+    try{
+      const saved=JSON.parse(localStorage.getItem(`${profileStorageKey}-${deviceProfile.key}`));
+      if(saved&&['resolution','samples','bounces','advanced'].every(key=>key in saved))
+        return {...deviceProfile,...saved,name:`${deviceProfile.name} 저장값`};
+    }catch(error){
+      console.warn('저장된 성능 프로파일을 읽지 못했습니다.',error);
+    }
+    return deviceProfile;
+  }
+  function saveProfile(){
+    try{
+      localStorage.setItem(`${profileStorageKey}-${deviceProfile.key}`,JSON.stringify({
+        resolution:S.resolution,samples:S.samples,bounces:S.bounces,advanced:S.advanced
+      }));
+    }catch(error){
+      console.warn('성능 프로파일을 저장하지 못했습니다.',error);
+    }
+  }
   function chooseInitialProfile(){
-    const mobile=navigator.userAgentData?.mobile || matchMedia('(pointer:coarse)').matches;
-    return mobile?{name:'모바일 기본값',resolution:'320',samples:'4',bounces:'1',advanced:false}
-                 :{name:'데스크톱 기본값',resolution:'640',samples:'8',bounces:'2',advanced:true};
+    return readSavedProfile();
   }
   const initialProfile=chooseInitialProfile();
   for(const id of ['resolution','samples','bounces']){
@@ -34,7 +53,10 @@
   }
   S.advanced=initialProfile.advanced;
   document.querySelector('#ui .ctl[data-id="advanced"] input').checked=S.advanced;
-  document.querySelector('#profile').textContent=`자동 시작 설정: ${initialProfile.name} · ${S.resolution}×${Number(S.resolution)*9/16} · ${S.samples}표본 · ${S.bounces}회 반사 · 고급 효과 ${S.advanced?'켬':'끔'}`;
+  function updateProfileLabel(prefix='적용 설정'){
+    document.querySelector('#profile').textContent=`${prefix}: ${initialProfile.name} · ${S.resolution}×${Number(S.resolution)*9/16} · ${S.samples}표본 · ${S.bounces}회 반사 · 고급 효과 ${S.advanced?'켬':'끔'}`;
+  }
+  updateProfileLabel();
   const rasterVS=`#version 300 es
   layout(location=0) in vec3 aPos;
   layout(location=1) in vec3 aNormal;
@@ -285,6 +307,8 @@
       }
       const base=rows[0];
       result.innerHTML='<table><thead><tr><th>방식</th><th>중앙값</th><th>Local 대비</th></tr></thead><tbody>'+rows.map((v,i)=>`<tr><td>${names[i]}</td><td>${v.toFixed(2)} ms</td><td>${base>0?(v/base).toFixed(1)+'배':'—'}</td></tr>`).join('')+'</tbody></table>';
+      saveProfile();
+      updateProfileLabel('저장·적용 설정');
       status.textContent=`${timer?'GPU 실행 시간':'브라우저 동기화 포함'} · ${cv.width}×${cv.height} · Path ${S.samples}표본/픽셀 · 최대 ${S.bounces}회 반사 · ${S.advanced?'고급 효과 켬':'고급 효과 끔'}. 다른 기기에서도 같은 조건을 측정하세요.`;
     }catch(e){result.textContent=e.message;}
     finally{
