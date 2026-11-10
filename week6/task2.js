@@ -27,13 +27,13 @@ precision highp float;
 const float PI=3.14159265;
 in vec3 vLocalPos,vWorldPos,vWorldNormal; in vec2 vUV;
 out vec4 outColor;
-uniform sampler2D uColor,uNormal,uARM,uEnv;
+uniform sampler2D uColor,uNormal,uIceNormal,uARM,uEnv;
 uniform vec3 uEye,uLight;
-uniform float uRough,uMetal,uNormalStrength,uPower,uAmbient,uEnvPower,uTime;
+uniform float uRough,uMetal,uNormalStrength,uIceNormalStrength,uPower,uSolarLight,uAmbient,uEnvPower,uTime;
 uniform float uIceAmount,uIceThreshold,uIceStrength;
 uniform float uCraterAmount,uCraterSize,uCraterStrength;
 uniform float uSolarDistance;
-uniform int uDebugMode,uSunMode;
+uniform int uDebugMode,uSunMode,uCompare;
 
 vec3 srgbToLinear(vec3 c){
  return mix(c/12.92,pow((c+.055)/1.055,vec3(2.4)),step(vec3(.04045),c));
@@ -124,7 +124,7 @@ vec3 directPBR(vec3 N,vec3 V,vec3 L,vec3 base,float rough,float metal){
  vec3 F0=mix(vec3(.04),base,metal);
  vec3 F=F0+(1.0-F0)*pow(1.0-vh,5.0);
  vec3 kd=(1.0-F)*(1.0-metal);
- return (kd*base/PI+D*G*F/max(4.0*nl*nv,1e-4))*nl*uPower;
+ return (kd*base/PI+D*G*F/max(4.0*nl*nv,1e-4))*nl*uPower*uSolarLight;
 }
 void main(){
  if(uSunMode==1){
@@ -148,10 +148,11 @@ void main(){
   outColor=vec4(vec3(crater),1.0);
   return;
  }
- vec3 iceColor=vec3(.62,.84,.98);
- float iceEffect=ice*uIceStrength;
- base=mix(base,mix(iceColor,vec3(.90,.97,1.0),ice),iceEffect);
- float craterEffect=crater*uCraterStrength;
+ vec3 iceColor=vec3(.38,.78,1.0);
+ float surfaceEffects=1.0-float(uCompare);
+ float iceEffect=clamp(ice*uIceStrength*1.35,0.0,1.0)*surfaceEffects;
+ base=mix(base,mix(iceColor,vec3(1.0,.99,.96),ice),iceEffect);
+ float craterEffect=crater*uCraterStrength*surfaceEffects;
  float craterPit=1.0-smoothstep(.08,.34,craterDistance(S));
  float craterRim=smoothstep(.28,.50,craterDistance(S))*(1.0-smoothstep(.10,.28,craterDistance(S)));
  base=mix(base,base*vec3(.42,.48,.68),craterPit*craterEffect);
@@ -169,7 +170,11 @@ void main(){
   vec3 T=cross(dp2,N)*du1.x+cross(N,dp1)*du2.x;
   vec3 B=cross(dp2,N)*du1.y+cross(N,dp1)*du2.y;
   float inv=inversesqrt(max(max(dot(T,T),dot(B,B)),1e-8));
-  vec3 mapN=texture(uNormal,vUV).xyz*2.0-1.0;
+  vec3 rockN=texture(uNormal,vUV).xyz*2.0-1.0;
+  vec3 iceN=texture(uIceNormal,vUV*vec2(4.0,2.0)).xyz*2.0-1.0;
+  iceN.xy*=uIceNormalStrength*5.0;
+  iceN=normalize(iceN);
+  vec3 mapN=normalize(mix(rockN,iceN,ice*surfaceEffects));
   mapN.xy*=uNormalStrength;
   float crackNoise=noise3(S*32.0+vec3(7.0,13.0,23.0));
   float crack=smoothstep(.42,.58,crackNoise);
@@ -203,11 +208,11 @@ void main(){
 
 const prog=D.program(gl,VS,FS),U=D.uniforms(gl,prog,[
  'uVP','uModel','uNormalMat','uEye','uLight','uRough','uMetal',
- 'uNormalStrength','uPower','uAmbient','uEnvPower','uTime',
+ 'uNormalStrength','uIceNormalStrength','uPower','uSolarLight','uAmbient','uEnvPower','uTime',
  'uIceAmount','uIceThreshold','uIceStrength',
  'uCraterAmount','uCraterSize','uCraterStrength','uDebugMode',
- 'uSolarDistance','uSunMode',
- 'uColor','uNormal','uARM','uEnv'
+ 'uSolarDistance','uSunMode','uCompare',
+ 'uColor','uNormal','uIceNormal','uARM','uEnv'
 ]);
 const mesh=D.upload(gl,D.revolution(D.profiles.sphere(.95,64),96));
 
@@ -218,10 +223,14 @@ function solidTexture(r,g,b){
  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
  return tex;
 }
-function loadImage(name){
+function loadImage(name,fallback=[0,0,0,255],extension='.jpg',repeat=false){
  const tex=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,tex);
- gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([0,0,0,255]));
+ gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array(fallback));
  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+ if(repeat){
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+ }
  const job=new Promise(resolve=>{
   const image=new Image();
   image.onload=()=>{
@@ -229,24 +238,32 @@ function loadImage(name){
    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);
    gl.generateMipmap(gl.TEXTURE_2D);
    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+   if(repeat){
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);
+   }
    resolve();
   };
   image.onerror=()=>resolve();
-  image.src='assets/week06/'+name+'.jpg';
+  image.src='assets/week06/'+name+extension;
  });
  return {tex,job};
 }
 const colorTex=solidTexture(255,255,255);
-const normalTex=solidTexture(128,128,255);
+const normalAsset=loadImage('rock_boulder_dry_nor_gl',[128,128,255,255]);
+const normalTex=normalAsset.tex;
+const iceNormalAsset=loadImage('Ice003_2K-PNG_NormalGL',[128,128,255,255],'.png',true);
+const iceNormalTex=iceNormalAsset.tex;
 const armTex=solidTexture(255,255,0);
 const env=loadImage('studio_small_09_tonemapped');
-Promise.all([env.job]).then(()=>{document.querySelector('#status').textContent='catholic · PBR 텍스처 로딩 완료';});
+Promise.all([env.job,normalAsset.job,iceNormalAsset.job]).then(()=>{document.querySelector('#status').textContent='catholic · PBR 텍스처와 노멀맵 로딩 완료';});
 
 document.querySelector('#ui').innerHTML='';
 const S=D.UI('#ui',[
  {id:'rough',label:'roughness',min:.05,max:1,step:.01,value:.62},
  {id:'metal',label:'metallic',min:0,max:1,step:.01,value:.08},
  {id:'normal',label:'normal 강도',min:0,max:5,step:.1,value:1},
+ {id:'iceNormal',label:'ice normal 강도',min:0,max:5,step:.1,value:1.5},
  {id:'power',label:'직접광 세기',min:0,max:8,step:.1,value:4},
  {id:'ambient',label:'상수 ambient',min:0,max:1,step:.01,value:.15},
  {id:'env',label:'환경맵 반사 세기',min:0,max:3,step:.1,value:1.2},
@@ -256,6 +273,7 @@ const S=D.UI('#ui',[
  {id:'craterAmount',label:'크레이터 개수',min:0,max:1,step:.01,value:.45},
  {id:'craterSize',label:'크레이터 크기',min:0,max:1,step:.01,value:.5},
  {id:'craterStrength',label:'크레이터 강도',min:0,max:1,step:.01,value:.75},
+ {id:'compare',type:'check',label:'기본 표면과 비교',value:false},
  {id:'debug',type:'select',label:'진단 모드',value:'final',options:[
   {value:'final',label:'일반 모드'},
   {value:'ice',label:'얼음 마스크'},
@@ -290,11 +308,13 @@ D.loop((time)=>{
  gl.uniform3fv(U.uLight,light);
  gl.uniform1f(U.uTime,time);
  gl.uniform1f(U.uSolarDistance,solarDistance);
+ gl.uniform1f(U.uSolarLight,1.15-.43*solarDistance);
  gl.uniform1i(U.uSunMode,0);
  for(const [key,value] of Object.entries({
-  uRough:S.rough,uMetal:S.metal,uNormalStrength:S.normal,
+  uRough:S.rough,uMetal:S.metal,uNormalStrength:S.normal,uIceNormalStrength:S.iceNormal,
   uPower:S.power,uAmbient:S.ambient,uEnvPower:S.env
  })) gl.uniform1f(U[key],value);
+ gl.uniform1i(U.uCompare,S.compare?1:0);
  gl.uniform1f(U.uIceAmount,S.iceAmount);
  gl.uniform1f(U.uIceThreshold,S.iceThreshold);
  gl.uniform1f(U.uIceStrength,S.iceStrength);
@@ -302,10 +322,10 @@ D.loop((time)=>{
  gl.uniform1f(U.uCraterSize,S.craterSize);
  gl.uniform1f(U.uCraterStrength,S.craterStrength);
  gl.uniform1i(U.uDebugMode,S.debug==='crater'?2:(S.debug==='ice'?1:0));
- const textures=[colorTex,normalTex,armTex,env.tex];
+ const textures=[colorTex,normalTex,iceNormalTex,armTex,env.tex];
  textures.forEach((tex,i)=>{
   gl.activeTexture(gl.TEXTURE0+i); gl.bindTexture(gl.TEXTURE_2D,tex);
-  gl.uniform1i(U[['uColor','uNormal','uARM','uEnv'][i]],i);
+  gl.uniform1i(U[['uColor','uNormal','uIceNormal','uARM','uEnv'][i]],i);
  });
  gl.bindVertexArray(mesh.vao);
  gl.drawElements(gl.TRIANGLES,mesh.count,gl.UNSIGNED_SHORT,0);
