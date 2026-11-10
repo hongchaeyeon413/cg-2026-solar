@@ -20,14 +20,14 @@
       {value:'1',label:'1회'}, {value:'2',label:'2회'}, {value:'3',label:'3회'}, {value:'4',label:'4회'}]},
     {id:'advanced',type:'check',label:'거울·굴절·환경 반사',value:true}
   ]);
-  const profileStorageKey='cg2026-week7-task2-profile';
+  const profileStorageKey='cg2026-week7-task2-profile-v2';
   const deviceProfile=navigator.userAgentData?.mobile || matchMedia('(pointer:coarse)').matches
     ? {key:'mobile',name:'기기 B 스마트폰 측정값',resolution:'1280',samples:'16',bounces:'4',advanced:false}
     : {key:'desktop',name:'기기 A 노트북 측정값',resolution:'1920',samples:'4',bounces:'1',advanced:true};
   function readSavedProfile(){
     try{
       const saved=JSON.parse(localStorage.getItem(`${profileStorageKey}-${deviceProfile.key}`));
-      if(saved&&['resolution','samples','bounces','advanced'].every(key=>key in saved))
+      if(saved?.version===2&&['resolution','samples','bounces','advanced'].every(key=>key in saved))
         return {...deviceProfile,...saved,name:`${deviceProfile.name} 저장값`};
     }catch(error){
       console.warn('저장된 성능 프로파일을 읽지 못했습니다.',error);
@@ -37,6 +37,7 @@
   function saveProfile(){
     try{
       localStorage.setItem(`${profileStorageKey}-${deviceProfile.key}`,JSON.stringify({
+        version:2,
         resolution:S.resolution,samples:S.samples,bounces:S.bounces,advanced:S.advanced
       }));
     }catch(error){
