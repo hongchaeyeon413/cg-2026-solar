@@ -2,7 +2,6 @@
 
 - 이름: 홍채연
 - 저장소: https://github.com/hongchaeyeon413/cg-2026-solar.git
-- 실행: [Task 1](task1.html) · [Task 2](task2.html) · [Task 3](task3.html)
 
 
 ## 순서를 바꿔 보고 답해 보기

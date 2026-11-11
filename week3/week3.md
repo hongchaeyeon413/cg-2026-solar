@@ -38,7 +38,6 @@ const model = M4.multiply(M4.rotateY(time * 0.8), M4.translate(0, 2.0, 1.9));
 
 **결과**: 공이 **y축 둘레를 큰 원으로 도는 공전** (orbit around center axis)
 
-**주의**: 이동에 **x 성분(2.0)**이 있어야 공전이 눈에 띄게 보입니다. y 방향만 이동하면 y축으로 회전해도 위치가 바뀌지 않아 자전처럼 보입니다.
 
 ![공전: 공이 y축 둘레를 큰 원으로 도는 모습](images/공전.png)
 
